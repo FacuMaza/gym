@@ -1,61 +1,46 @@
-{% extends 'base.html' %}
-{% load static %}
+﻿{% extends 'base.html' %}
 {% block content %}
+<div class="container page-container py-4">
+    <h2 class="mb-4">Mensualidades</h2>
+    <p class="text-muted mb-4">Creá tus planes y agregá las opciones que quieras (libre, 12 clases, 8 clases, etc.)</p>
+    <a href="{% url 'crear_plan_mensualidad' %}" class="btn btn-success mb-4">+ Nueva mensualidad</a>
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Lista de Tipos de Mensualidad</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: flex-start;
-         min-height: 60vh;
-          padding-top: 10vh;
-      }
-      .button-container {
-        display: flex;
-        justify-content: center; /* Centra los botones horizontalmente */
-        margin-top: 1rem; /* Añade un espacio arriba de los botones */
-    }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card" style="width: 80%; max-width: 1000px;">
-            <div class="card-body">
-                <h2 class="card-title">Lista de Tipos de Mensualidad</h2>
-                <div class="button-container">
-                    <a href="{% url 'crear_tipo_mensualidad' %}" class="btn btn-success">Crear Nuevo Tipo</a>
-                </div>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Tipo</th>
-                            <th>Precio</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tipo in tipos %}
-                            <tr>
-                                <td>{{ tipo.tipo }}</td>
-                                <td>{{ tipo.precio }}</td>
-                                <td>
-                                    <a href="{% url 'editar_tipo_mensualidad' tipo.pk %}" class="btn btn-primary btn-sm">Editar</a>
-                                    <a href="{% url 'eliminar_tipo_mensualidad' tipo.pk %}" class="btn btn-danger btn-sm">Eliminar</a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+    {% for cat in categorias %}
+    <div class="card shadow mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ cat.nombre }}</h5>
+            <a href="{% url 'crear_opcion_mensualidad' cat.pk %}" class="btn btn-sm btn-outline-primary">+ Agregar opción</a>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Opción</th>
+                        <th>Precio</th>
+                        <th>Clases</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for op in cat.tipos_mensualidad.all %}
+                    <tr>
+                        <td>{{ op.tipo }}</td>
+                        <td>$ {{ op.precio|moneda_ar }}</td>
+                        <td>{{ op.clases_incluidas|default:"Pase libre" }}</td>
+                        <td>
+                            <a href="{% url 'editar_tipo_mensualidad' op.pk %}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                            <a href="{% url 'eliminar_tipo_mensualidad' op.pk %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted">Sin opciones. Agregá libre, 12 clases, 8 clases, etc.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-</body>
-</html>
-
+    {% empty %}
+    <div class="alert alert-info">No hay planes creados. Creá uno con el nombre que quieras.</div>
+    {% endfor %}
+</div>
 {% endblock %}

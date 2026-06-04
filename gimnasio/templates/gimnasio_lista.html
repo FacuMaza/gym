@@ -1,60 +1,30 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% load static %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Lista de Gimnasios</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        .center-container {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 60vh;
-            padding-top: 10vh;
-        }
-        .button-container {
-            display: flex;
-            justify-content: center; /* Centra los botones horizontalmente */
-            margin-top: 1rem; /* Añade un espacio arriba de los botones */
-        }
-
-        /* Adjust the card styles for the gimnasio items */
-        .gimnasio-card {
-            width: 100%;
-            max-width: 300px; /* Limit the maximum width */
-            margin: 0 auto;     /* Center the cards horizontally */
-        }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card" style="width: 80%; max-width: 800px;">
-            <div class="card-body">
-                <h2 class="card-title">Lista de Gimnasios</h2>
-                <div class="button-container">
-                    <a href="{% url 'gimnasio_crear' %}" class="btn btn-primary mb-3">Agregar Gimnasio</a>
-                </div>
-                <div class="row">
-                    {% for gimnasio in gimnasios %}
-                    <div class="col-md-4 mb-3">
-                        <div class="card gimnasio-card">
-                            <div class="card-body">
-                                <a href="{% url 'gimnasio_detalle' gimnasio.pk %}" class="btn btn-outline-secondary w-100 text-start">
-                                    {{ gimnasio.direccion }}
-                                </a>
-                            </div>
+<div class="container page-container py-4">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+                <h2 class="card-title mb-0">Lista de Gimnasios</h2>
+                <a href="{% url 'gimnasio_crear' %}" class="btn btn-primary">Agregar Gimnasio</a>
+            </div>
+            <div class="row g-3 justify-content-center">
+                {% for gimnasio in gimnasios %}
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <a href="{% url 'gimnasio_detalle' gimnasio.pk %}" class="btn btn-outline-secondary w-100 text-start">
+                                <div class="fw-semibold">{{ gimnasio.nombre|default:"Sin nombre" }}</div>
+                                <small class="text-muted d-block">{{ gimnasio.direccion|default:"Sin dirección" }}</small>
+                            </a>
                         </div>
                     </div>
-                    {% empty %}
-                    <p>No hay gimnasios registrados.</p>
-                    {% endfor %}
                 </div>
+                {% empty %}
+                <p class="text-muted text-center mb-0">No hay gimnasios registrados.</p>
+                {% endfor %}
             </div>
         </div>
     </div>
-</body>
-</html>
+</div>
 {% endblock %}

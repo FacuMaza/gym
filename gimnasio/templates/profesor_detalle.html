@@ -1,0 +1,268 @@
+﻿{% extends 'base.html' %}
+{% load l10n %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="mb-0 fw-bold">{{ profesor.nombre }} {{ profesor.apellido }}</h2>
+            {% if profesor.telefono %}<p class="text-muted mb-0">{{ profesor.telefono }}</p>{% endif %}
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'profesor_editar' profesor.pk %}" class="btn btn-outline-primary">Editar</a>
+            <a href="{% url 'venta_crear' %}?profesor={{ profesor.pk }}" class="btn btn-success">+ Cargar venta</a>
+            <a href="{% url 'profesor_list' %}" class="btn btn-outline-secondary">Volver</a>
+        </div>
+    </div>
+
+    <!-- Calculador: total a pagar al profesor -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Calcular total a pagar al profesor</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Sueldo bruto − adelantos − productos cargados = lo que le tenés que pagar.</p>
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Sueldo bruto ($)</label>
+                    <div class="d-flex gap-2">
+                        <input type="number" id="input-sueldo" class="form-control form-control-lg" step="0.01" min="0" placeholder="0" value="">
+                        <button type="button" id="btn-calcular" class="btn btn-primary">Calcular</button>
+                        <button type="button" id="btn-limpiar" class="btn btn-outline-secondary">Limpiar</button>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="bg-light rounded p-3">
+                        <div class="mb-2 small">Sueldo $<span id="display-sueldo">0</span> − Adelantos ${{ total_adelantos|moneda_ar }} − Productos ${{ total_ventas_profesor|moneda_ar }}</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold">Total a pagar:</span>
+                            <span id="display-balance" class="fs-4 fw-bold text-success">$ 0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Registrar pago del profesor -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Registrar pago del profesor</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Cuando el profesor te paga (o cuando vos le pagás el sueldo), registrá el monto acá. Si usaste el calculador, hacé clic en "Calcular" y el total se carga automáticamente.</p>
+            {% if caja_abierta %}
+            <form method="post" class="row g-3" id="form-pago-profesor">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="pagar">
+                <div class="col-md-3">
+                    <label class="form-label">Monto a pagar ($)</label>
+                    {{ form_pago.monto }}
+                    {% for err in form_pago.monto.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Forma de pago</label>
+                    {{ form_pago.metodo_pago }}
+                    {% for err in form_pago.metodo_pago.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4 d-none" id="div-titular-pago">
+                    <label class="form-label">Titular</label>
+                    {{ form_pago.nombre_titular }}
+                    {% for err in form_pago.nombre_titular.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-success">Pagar</button>
+                </div>
+            </form>
+            {% for err in form_pago.non_field_errors %}<div class="text-danger small mt-1">{{ err }}</div>{% endfor %}
+            <script>
+            (function() {
+                var sel = document.querySelector('#form-pago-profesor select[name="metodo_pago"]');
+                var divTitular = document.getElementById('div-titular-pago');
+                function toggle() {
+                    var v = sel ? sel.value : '';
+                    if (v === 'transferencia' || v === 'tarjeta_credito') {
+                        divTitular.classList.remove('d-none');
+                    } else {
+                        divTitular.classList.add('d-none');
+                    }
+                }
+                if (sel) sel.addEventListener('change', toggle);
+                toggle();
+            })();
+            </script>
+            {% else %}
+            <p class="text-warning mb-0">Debés abrir la caja para registrar pagos.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Productos vendidos al profesor -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Productos vendidos (cargos a cuenta)</h5>
+                    <span class="badge bg-secondary">Total: $ {{ total_ventas_profesor|moneda_ar }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cant.</th>
+                                    <th class="text-end">Total</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for v in ventas %}
+                                <tr>
+                                    <td>{{ v.producto.descripcion }}</td>
+                                    <td>{{ v.cantidad }}</td>
+                                    <td class="text-end">$ {{ v.monto_total|moneda_ar }}</td>
+                                    <td>{{ v.fecha|date:"d/m/Y"|default:"-" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="4" class="text-center text-muted py-3">No hay ventas registradas</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-2 bg-light text-end small">Desde <a href="{% url 'venta_crear' %}?profesor={{ profesor.pk }}">Ventas</a> podés cargar más productos.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Adelantos (formulario inline) -->
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Adelantos</h5>
+                    <span class="badge bg-warning text-dark">Total: $ {{ total_adelantos|moneda_ar }}</span>
+                </div>
+                <div class="card-body">
+                    <form method="post" class="row g-2 align-items-end mb-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="adelanto">
+                        {{ form_adelanto.fecha }}
+                        <div class="col-5">
+                            <label class="form-label small">Monto</label>
+                            {{ form_adelanto.monto }}
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label small">Descripción</label>
+                            {{ form_adelanto.descripcion }}
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-warning btn-sm">Agregar</button>
+                        </div>
+                    </form>
+                    {% for err in form_adelanto.non_field_errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                    {% for field in form_adelanto %}{% for err in field.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}{% endfor %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr><th>Fecha</th><th>Descripción</th><th class="text-end">Monto</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for a in adelantos %}
+                                <tr>
+                                    <td>{{ a.fecha|date:"d/m/Y" }}</td>
+                                    <td>{{ a.descripcion|default:"Adelanto" }}</td>
+                                    <td class="text-end">$ {{ a.monto|moneda_ar }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="3" class="text-center text-muted py-2">No hay adelantos</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagos registrados al profesor -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Pagos registrados al profesor</h5>
+            <span class="badge bg-success">Total: $ {{ total_pagos|moneda_ar }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr><th>Fecha</th><th>Monto</th><th>Efectivo</th><th>Transferencia</th><th>Tarjeta</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pagos %}
+                        <tr>
+                            <td>{{ p.fecha|date:"d/m/Y" }}</td>
+                            <td>$ {{ p.monto|moneda_ar }}</td>
+                            <td>$ {{ p.efectivo|moneda_ar }}</td>
+                            <td>$ {{ p.transferencia|moneda_ar }}</td>
+                            <td>$ {{ p.tarjeta_credito|moneda_ar }}</td>
+                            <td><a href="{% url 'pago_profesor_detalle' p.pk %}" class="btn btn-sm btn-outline-primary">Detalle</a></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-3">No hay pagos registrados</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="calc-data-profesor" data-adelantos="{{ total_adelantos|default:0|unlocalize }}" data-ventas="{{ total_ventas_profesor|default:0|unlocalize }}" class="d-none"></div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var dataEl = document.getElementById('calc-data-profesor');
+    var totalAdelantos = dataEl ? (parseFloat(dataEl.getAttribute('data-adelantos')) || 0) : 0;
+    var totalVentas = dataEl ? (parseFloat(dataEl.getAttribute('data-ventas')) || 0) : 0;
+
+    var inputSueldo = document.getElementById('input-sueldo');
+    var btnCalcular = document.getElementById('btn-calcular');
+    var displaySueldo = document.getElementById('display-sueldo');
+    var displayBalance = document.getElementById('display-balance');
+    var inputMontoPagar = document.querySelector('#form-pago-profesor input[name="monto"]');
+
+    function calcular() {
+        var sueldo = parseFloat(inputSueldo && inputSueldo.value ? inputSueldo.value : 0) || 0;
+        var balance = Math.max(0, sueldo - totalAdelantos - totalVentas);
+        if (displaySueldo) displaySueldo.textContent = sueldo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (displayBalance) {
+            displayBalance.textContent = '$ ' + balance.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            displayBalance.classList.remove('text-success', 'text-danger', 'text-muted');
+            if (balance > 0) displayBalance.classList.add('text-success');
+            else if (balance < 0) displayBalance.classList.add('text-danger');
+            else displayBalance.classList.add('text-muted');
+        }
+        if (inputMontoPagar) inputMontoPagar.value = balance.toFixed(2);
+    }
+
+    function limpiar() {
+        if (inputSueldo) inputSueldo.value = '';
+        if (displaySueldo) displaySueldo.textContent = '0';
+        if (displayBalance) {
+            displayBalance.textContent = '$ 0.00';
+            displayBalance.classList.remove('text-success', 'text-danger');
+            displayBalance.classList.add('text-muted');
+        }
+        if (inputMontoPagar) inputMontoPagar.value = '';
+        var sel = document.querySelector('#form-pago-profesor select[name="metodo_pago"]');
+        if (sel) sel.value = 'efectivo';
+        var titular = document.querySelector('#form-pago-profesor input[name="nombre_titular"]');
+        if (titular) titular.value = '';
+        var divTitular = document.getElementById('div-titular-pago');
+        if (divTitular) divTitular.classList.add('d-none');
+    }
+
+    if (btnCalcular) btnCalcular.addEventListener('click', function(e) { e.preventDefault(); calcular(); });
+    var btnLimpiar = document.getElementById('btn-limpiar');
+    if (btnLimpiar) btnLimpiar.addEventListener('click', function(e) { e.preventDefault(); limpiar(); });
+    if (inputSueldo) inputSueldo.addEventListener('keyup', function(e) { if (e.key === 'Enter') { e.preventDefault(); calcular(); } });
+});
+</script>
+{% endblock %}

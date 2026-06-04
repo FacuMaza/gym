@@ -1,90 +1,80 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <title>Asignar Mensualidad</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        .center-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 35vh;
-        }
-        .card {
-           width: 70%; /* Reducido el ancho de la tarjeta */
-            max-width: 800px;  /* Reducido el max-width de la tarjeta */
-            display: flex;
-            flex-direction: column;
-        }
-        .card-body {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 1.8rem; /* Reducido el padding del cuerpo de la tarjeta */
-        }
-        .button-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 0.8rem; /* Reducido el margen superior */
-            margin-bottom: 0.4rem; /* Reducido el margen inferior */
-        }
-        .spaced-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 10px; /* Reducido el espacio entre botones */
-            margin-top: 1rem; /* Reducido el margen superior */
-            margin-bottom: 0.5rem;  /* Reducido el margen inferior */
-        }
-         .form-group label {
-          display: block;
-          margin-bottom: 0.4rem; /* Reducido el margen inferior */
-          font-size: 0.9rem; /* Reducido el tamaño de fuente */
-        }
-         .form-group input,
-         .form-group select {
-             width: 100%;
-              padding: 0.6rem; /* Reducido el padding */
-             margin-bottom: 1rem; /* Reducido el margen inferior */
-             border: 1px solid #ddd;
-             border-radius: 0.2rem; /* Reducido el border radius */
-            font-size: 0.9rem;  /* Reducido el tamaño de fuente */
-           }
-        .card-title {
-             font-size: 1.4rem; /* Reducido el tamaño de fuente */
-             margin-bottom: 1rem;  /* Reducido el margen inferior */
-        }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card">
-            <div class="card-body">
-                <h2 class="card-title">Asignar Mensualidad</h2>
-                <form method="post">
-                    {% csrf_token %}
-                    {% for field in form %}
-                     <div class="form-group">
-                       {{ field.label_tag }}
-                       {{ field }}
-                       {% if field.errors %}
-                         <div class="alert alert-danger" role="alert" style="font-size:0.7rem;">
-                           {{ field.errors|join:", " }}
-                         </div>
-                       {% endif %}
-                    </div>
-                  {% endfor %}
-                    <div class="spaced-buttons">
-                         <button type="submit" class="btn btn-primary btn-sm">Asignar</button>
-                    </div>
-                </form>
-            </div>
+<div class="container page-container py-4">
+    <div class="card shadow">
+        <div class="card-body">
+            <h2 class="card-title mb-4">Asignar Mensualidad</h2>
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                {% if field.name != 'tipo_mensualidad' %}
+                <div class="mb-3">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+                <div class="mb-3">
+                    <label class="form-label">Categoría</label>
+                    <select id="categoria-select" class="form-select">
+                        <option value="">-- Seleccionar categoría --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Seleccionar Nueva Mensualidad</label>
+                    <select name="tipo_mensualidad" id="id_tipo_mensualidad" class="form-select"
+                            data-initial-tipo="{{ initial_tipo_id|default:'' }}"
+                            data-initial-cat="{{ initial_categoria_id|default:'' }}">
+                        <option value="">--------</option>
+                    </select>
+                </div>
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Asignar</button>
+                    <a href="{% url 'lista_cuotas' %}" class="btn btn-secondary">Volver</a>
+                </div>
+            </form>
         </div>
     </div>
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+</div>
+<script>
+(function() {
+    const catSelect = document.getElementById('categoria-select');
+    const tipoSelect = document.getElementById('id_tipo_mensualidad');
+    if (!tipoSelect || !catSelect) return;
+
+    const gymId = '{{ gimnasio_actual.id|default:"" }}';
+    fetch('{% url "api_categorias" %}' + (gymId ? '?gimnasio_id=' + gymId : '')).then(r=>r.json()).then(cats=>{
+        cats.forEach(c=>{
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.nombre;
+            catSelect.appendChild(opt);
+        });
+    });
+
+    function cargarMensualidades(cid, selectTipoId) {
+        tipoSelect.innerHTML = '<option value="">--------</option>';
+        if (!cid) return;
+        fetch('{% url "api_mensualidades_por_categoria" %}?categoria_id='+cid).then(r=>r.json()).then(ms=>{
+            ms.forEach(m=>{
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.tipo + ' - $' + formatMonedaAR(m.precio, 0) + (m.frecuencia ? ' ('+m.frecuencia+')' : '');
+                if (selectTipoId && m.id == selectTipoId) opt.selected = true;
+                tipoSelect.appendChild(opt);
+            });
+        });
+    }
+
+    catSelect.addEventListener('change', function(){ cargarMensualidades(this.value, null); });
+
+    const initCat = tipoSelect.dataset.initialCat;
+    const initTipo = tipoSelect.dataset.initialTipo;
+    if (initCat) {
+        catSelect.value = initCat;
+        cargarMensualidades(initCat, initTipo);
+    }
+})();
+</script>
 {% endblock %}

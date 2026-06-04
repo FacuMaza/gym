@@ -1,34 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block content %}
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Lista de Tipos de Usuario</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: flex-start;
-         min-height: 60vh;
-          padding-top: 10vh;
-      }
-      .button-container {
-        display: flex;
-        justify-content: center; /* Centra los botones horizontalmente */
-        margin-top: 1rem; /* Añade un espacio arriba de los botones */
-    }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card" style="width: 80%; max-width: 1000px;">
+<div class="container page-container py-4">
+        <div class="card">
             <div class="card-body">
                 <h2 class="card-title">Lista de Tipos de Usuario</h2>
-                <div class="button-container">
+                <div class="mb-3">
                     <a href="{% url 'tipo_usuario_create' %}" class="btn btn-success">Crear Nuevo Tipo de Usuario</a>
                 </div>
                 <table class="table table-striped">
@@ -53,6 +30,4 @@
             </div>
         </div>
     </div>
-</body>
-</html>
 {% endblock %}

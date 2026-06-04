@@ -1,62 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <title>Lista de Cuotas</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        .center-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 60vh;
-        }
-        .card {
-            width: 85%; /* Aumentado el ancho de la tarjeta */
-            max-width: 1100px; /* Aumentado el max-width */
-            display: flex;
-            flex-direction: column;
-        }
-        .card-body {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 2.2rem; /* Aumentado el padding */
-        }
-        .table-container {
-            flex: 1;
-            overflow-y: auto;
-        }
-        .table th, .table td {
-            font-size: 1.1rem; /* Aumentado el tamaño de la fuente */
-            padding: 0.8rem; /* Aumentado el padding */
-        }
-        .button-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 1.2rem;
-            margin-bottom: 0.6rem;
-        }
-        .spaced-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 10px; /* Aumentado el gap */
-            margin-top: 1.2rem;
-            margin-bottom: 0.6rem;
-        }
-        .card-title {
-             font-size: 1.6rem; /* Aumentado el tamaño de fuente */
-             margin-bottom: 1.2rem; /* Aumentado el margen */
-        }
-    </style>
-</head>
-<body>
-<div class="center-container">
+<div class="container page-container py-4">
     <div class="card">
         <div class="card-body">
             <h2 class="card-title">Lista de Cuotas</h2>
-            <div class="table-container">
+            <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
                     <tr>
@@ -105,9 +53,5 @@
         </div>
     </div>
 </div>
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+
 {% endblock %}

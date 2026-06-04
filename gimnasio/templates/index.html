@@ -2,93 +2,35 @@
 {% load static %}
 
 {% block content %}
-<body>
-  <h1>Bienvenido {{ usuario }}!</h1>
-  <form method="post" action="{% url 'logout' %}">
-      {% csrf_token %}
-      <button type="submit">Cerrar Sesión</button>
-  </form>
-    <main class="container">
-       
+<div class="container dashboard-home page-container py-4">
+  <h1 class="dashboard-welcome mb-4">Bienvenido {{ usuario }}!</h1>
 
-        <div class="row">
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h2 class="card-title">Últimos Socios Agregados</h2>
-                        {% if ultimos_socios %}
-                            <div class="row">
-                                {% for socio in ultimos_socios %}
-                                    <div class="col-md-6">
-                                        <a href="{% url 'detalle_socio' socio.pk %}">
-                                            {{ socio.nombre }} {{ socio.apellido }}
-                                        </a>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <p>No hay socios agregados recientemente.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-3">
-               <div class="card">
-                  <div class="card-body">
-                   <h2 class="card-title">Últimas Cuotas Agregadas</h2>
-                        {% if ultimas_cuotas %}
-                            <div class="row">
-                                {% for cuota in ultimas_cuotas %}
-                                    <div class="col-md-12 mb-2">
-                                        
-                                            <div class="card-body">
-                                                <h5 class="card-title">Cuota de: {{ cuota.socio.nombre }} {{ cuota.socio.apellido }}</h5>
-                                                <p class="card-text">
-                                                    <strong>Tipo Mensualidad:</strong> {{ cuota.tipo_mensualidad }}<br>
-                                                    
-                                                    <strong>Fecha Inicio:</strong> {{ cuota.fecha_inicio }}
-                                                </p>
-                                            </div>
-                                        
-                                    </div>
-                                {% endfor %}
-                            </div>
-                         {% else %}
-                            <p>No hay cuotas agregadas recientemente.</p>
-                         {% endif %}
-                     </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h2 class="card-title">Últimas Ventas Agregadas</h2>
-                        {% if ultimas_ventas %}
-                            <div class="row">
-                                {% for venta in ultimas_ventas %}
-                                    <div class="col-md-12 mb-2">
-                                        
-                                          <div class="card-body">
-                                            <h5 class="card-title">Venta de: {{ venta.producto.descripcion }}</h5>
-                                            <p class="card-text">
-                                                <strong>Cantidad:</strong> {{ venta.cantidad }}<br>
-                                            
-                                                
-                                            </p>
-                                          </div>
-                                        
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <p>No hay ventas agregadas recientemente.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+  {% if gimnasios %}
+    <div class="row g-4 dashboard-row">
+    {% for g in gimnasios %}
+    <div class="col-12 col-md-6 col-xl-5">
+      <div class="card dashboard-gym-card h-100">
+        <div class="card-header bg-primary text-white d-flex align-items-center">
+          <h5 class="mb-0">{{ g.nombre|default:g.direccion|default:"Gimnasio" }}</h5>
         </div>
-    </main>
-</body>
+        <div class="card-body">
+          <div class="d-grid gap-2">
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'lista_socios' %}" class="btn btn-outline-primary">Socios</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'lista_tipos_mensualidad' %}" class="btn btn-outline-primary">Agregar mensualidades</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'listado_ingresos' %}" class="btn btn-outline-primary">Ingresos</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'producto_list' %}" class="btn btn-outline-primary">Stock</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'profesor_list' %}" class="btn btn-outline-primary">Profesores</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'venta_crear' %}" class="btn btn-outline-primary">Ventas</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'balance_diario' %}" class="btn btn-outline-primary">Caja Diaria</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'historiales_index' %}" class="btn btn-outline-secondary">Historiales</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-info text-center">No posee gyms.</div>
+  {% endif %}
+</div>
 {% endblock %}

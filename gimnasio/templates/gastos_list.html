@@ -1,0 +1,51 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h2 class="mb-1 fw-bold">Gastos</h2>
+            <p class="text-muted mb-0 small">Registro de gastos del gimnasio (luz, alquiler, etc.)</p>
+        </div>
+        <a href="{% url 'gastos_crear' %}" class="btn btn-success">+ Registrar gasto</a>
+    </div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Monto</th>
+                    <th>Forma de pago</th>
+                    {% if puede_eliminar_gastos %}
+                    <th></th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in gastos_lista %}
+                <tr>
+                    <td>{{ g.fecha|date:"d/m/Y" }}</td>
+                    <td>{{ g.descripcion }}</td>
+                    <td>$ {{ g.monto|moneda_ar }}</td>
+                    <td>{{ g.get_forma_pago_display }}</td>
+                    {% if puede_eliminar_gastos %}
+                    <td>
+                        <form method="post" action="{% url 'gastos_eliminar' g.pk %}" style="display:inline;" onsubmit="return confirm('¿Eliminar este gasto?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+                        </form>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% empty %}
+                <tr><td colspan="{% if puede_eliminar_gastos %}5{% else %}4{% endif %}" class="text-center text-muted py-4">No hay gastos registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

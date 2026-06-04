@@ -1,67 +1,82 @@
-{% extends 'base.html' %}
-
+﻿{% extends 'base.html' %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Crear Socio</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: flex-start;
-         min-height: 60vh;
-          padding-top: 10vh;
-      }
-      .button-container {
-        display: flex;
-        justify-content: center; /* Centra los botones horizontalmente */
-        margin-top: 1rem; /* Añade un espacio arriba de los botones */
-    }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card" style="width: 60%; max-width: 800px;">
-            <div class="card-body">
-                <h2 class="card-title">Crear Socio</h2>
-                <form method="post">
-                    {% csrf_token %}
-                     <table class="table table-striped">
-                        <tbody>
-                        {% for field in form %}
-                            <tr>
-                                <th>{{ field.label_tag }}</th>
-                                <td>{{ field }}
-                                    {% if field.errors %}
-                                        <ul class="errorlist">
-                                        {% for error in field.errors %}
-                                            <li>{{ error }}</li>
-                                        {% endfor %}
-                                        </ul>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                    {% for error in form.non_field_errors %}
-                       <ul class="errorlist">
-                           <li>{{ error }}</li>
-                       </ul>
+<div class="container page-container py-4">
+    <div class="card shadow border-0">
+        <div class="card-body p-3 p-md-4">
+            <h2 class="card-title mb-4">Crear Socio / Cliente</h2>
+            <form method="post" id="form-socio">
+                {% csrf_token %}
+                <div class="row g-3">
+                    {% for field in form %}
+                    {% if field.name != 'tipo_mensualidad' and field.name != 'celular' and field.name != 'codigo_pais' %}
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+                    </div>
+                    {% endif %}
                     {% endfor %}
-                    <div class="button-container">
-                       <button type="submit" class="btn btn-primary">Guardar</button>
-                     </div>
-                </form>
-            </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">{{ form.celular.label }}</label>
+                        <div class="input-group">
+                            {{ form.codigo_pais }}
+                            {{ form.celular }}
+                        </div>
+                        {% if form.celular.errors %}<div class="text-danger small">{{ form.celular.errors.0 }}</div>{% endif %}
+                        {% if form.codigo_pais.errors %}<div class="text-danger small">{{ form.codigo_pais.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Categoría</label>
+                        <select id="categoria-select" class="form-select">
+                            <option value="">-- Seleccionar categoría --</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Tipo de Mensualidad</label>
+                        <select name="tipo_mensualidad" id="id_tipo_mensualidad" class="form-select">
+                            <option value="">--------</option>
+                        </select>
+                        <p class="small text-muted">Elegí primero la categoría para ver las mensualidades.</p>
+                    </div>
+                </div>
+                {% for error in form.non_field_errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-success">Guardar</button>
+                    <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Volver</a>
+                </div>
+            </form>
         </div>
     </div>
-    <div class="button-container">
-        <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Volver a la lista de socios</a>
-    </div>
-</body>
-</html>
+</div>
+<script>
+(function() {
+    const catSelect = document.getElementById('categoria-select');
+    const tipoSelect = document.querySelector('[name="tipo_mensualidad"]');
+    if (!tipoSelect || !catSelect) return;
+
+    const gymId = '{{ gimnasio_actual.id|default:"" }}';
+    fetch('{% url "api_categorias" %}' + (gymId ? '?gimnasio_id=' + gymId : '')).then(r=>r.json()).then(cats=>{
+        cats.forEach(c=>{
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.nombre;
+            catSelect.appendChild(opt);
+        });
+    });
+
+    catSelect.addEventListener('change', function(){
+        const cid = this.value;
+        tipoSelect.innerHTML = '<option value="">--------</option>';
+        if (!cid) return;
+        fetch('{% url "api_mensualidades_por_categoria" %}?categoria_id='+cid).then(r=>r.json()).then(ms=>{
+            ms.forEach(m=>{
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.tipo + ' - $' + formatMonedaAR(m.precio, 0) + (m.frecuencia ? ' ('+m.frecuencia+')' : '');
+                tipoSelect.appendChild(opt);
+            });
+        });
+    });
+})();
+</script>
 {% endblock %}

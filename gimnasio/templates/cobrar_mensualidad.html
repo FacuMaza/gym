@@ -1,0 +1,129 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm" style="border-radius: 16px; overflow: hidden;">
+                <div class="card-body p-3 p-md-5">
+                    <h2 class="mb-4 fw-bold">{% if es_renovacion %}Renovar{% else %}Pagar{% endif %} Mensualidad</h2>
+
+                    <div class="bg-light rounded-3 p-4 mb-4">
+                        <div class="row g-3">
+                            <div class="col-sm-6">
+                                <span class="text-muted small d-block">Socio</span>
+                                <span class="fw-semibold">{{ socio.apellido }}, {{ socio.nombre }}</span>
+                            </div>
+                            <div class="col-sm-6">
+                                <span class="text-muted small d-block">Mensualidad</span>
+                                <span class="fw-semibold">{{ socio.tipo_mensualidad }}</span>
+                            </div>
+                            <div class="col-sm-6">
+                                <span class="text-muted small d-block">Fecha de inicio</span>
+                                <span>{{ fecha_hoy|date:"d/m/Y" }}</span>
+                            </div>
+                            <div class="col-sm-6">
+                                <span class="text-muted small d-block">Fecha de vencimiento</span>
+                                <span>{{ fecha_venc_nueva|date:"d/m/Y" }}</span>
+                            </div>
+                            {% if es_por_clases %}
+                            <div class="col-12">
+                                <span class="text-muted small d-block">Clases (después del pago)</span>
+                                <span class="fw-semibold">{{ clases_a_dar }} clases</span>
+                            </div>
+                            {% endif %}
+                            <div class="col-12 pt-2 border-top">
+                                <span class="text-muted small d-block">Total a pagar</span>
+                                <span class="fs-4 fw-bold text-success">$ {{ precio|moneda_ar:0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form method="post" id="form-cobro">
+                        {% csrf_token %}
+                        <label class="form-label fw-semibold mb-3">Formas de pago (podés dividir en efectivo + transferencia + tarjeta)</label>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">💵 Efectivo ($)</label>
+                                <input type="number" name="efectivo" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.efectivo.value|default:0 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">🏦 Transferencia ($)</label>
+                                <input type="number" name="transferencia" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.transferencia.value|default:0 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">💳 Tarjeta ($)</label>
+                                <input type="number" name="tarjeta_credito" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.tarjeta_credito.value|default:0 }}">
+                            </div>
+                        </div>
+                        <p class="text-muted small mb-3">Faltante: $<span id="faltante">0</span></p>
+
+                        <div class="mb-4 d-none" id="div-titular">
+                            <label class="form-label">Nombre del titular (obligatorio si usás transferencia)</label>
+                            <input type="text" name="nombre_titular" class="form-control" placeholder="Ej: Juan Pérez" value="{{ form.nombre_titular.value|default:'' }}">
+                            {% if form.nombre_titular.errors %}<div class="text-danger small mt-1">{{ form.nombre_titular.errors.0 }}</div>{% endif %}
+                        </div>
+
+                        {% for err in form.non_field_errors %}<div class="alert alert-danger">{{ err }}</div>{% endfor %}
+
+                        <div class="d-flex gap-2 pt-2 flex-wrap">
+                            <button type="submit" class="btn btn-success btn-lg px-4" id="btn-submit">
+                                <span id="btn-text">{% if es_renovacion %}Renovar{% else %}Pagar{% endif %} $ {{ precio|moneda_ar:0 }}</span>
+                            </button>
+                            <a href="{% url 'lista_socios' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var total = parseFloat('{{ precio }}');
+    var inputs = document.querySelectorAll('.monto-pago');
+    var inpEfectivo = document.querySelector('input[name="efectivo"]');
+    var inpTransfer = document.querySelector('input[name="transferencia"]');
+    var inpTarjeta = document.querySelector('input[name="tarjeta_credito"]');
+    var accion = '{{ es_renovacion|yesno:"Renovar,Pagar" }}';
+
+    function otraSuma(sinEste) {
+        var s = 0;
+        inputs.forEach(function(inp) {
+            if (inp !== sinEste) s += parseFloat(inp.value) || 0;
+        });
+        return s;
+    }
+
+    function capInput(inp) {
+        var maxVal = Math.max(0, total - otraSuma(inp));
+        var val = parseFloat(inp.value) || 0;
+        if (val > maxVal) inp.value = maxVal;
+    }
+
+    function actualizar() {
+        inputs.forEach(capInput);
+        var suma = 0;
+        inputs.forEach(function(inp) {
+            suma += parseFloat(inp.value) || 0;
+        });
+        var faltante = Math.max(0, total - suma);
+        document.getElementById('faltante').textContent = formatMonedaAR(faltante, 0);
+        document.getElementById('btn-submit').disabled = Math.abs(faltante) > 0.01;
+        document.getElementById('btn-text').textContent = accion + (faltante > 0 ? ' $' + formatMonedaAR(faltante, 0) : '');
+        var divTitular = document.getElementById('div-titular');
+        var transf = parseFloat(inpTransfer.value) || 0;
+        if (transf > 0) {
+            divTitular.classList.remove('d-none');
+        } else {
+            divTitular.classList.add('d-none');
+        }
+    }
+
+    inputs.forEach(function(inp) {
+        inp.addEventListener('input', actualizar);
+    });
+    actualizar();
+})();
+</script>
+{% endblock %}

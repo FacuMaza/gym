@@ -1,139 +1,289 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --nav-bg: #0f172a;
+            --nav-text: #f8fafc;
+            --nav-hover: #38bdf8;
+            --accent: #0ea5e9;
+        }
+        body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #f1f5f9; overflow-x: hidden; }
+        .navbar-gym {
+            background: linear-gradient(135deg, var(--nav-bg) 0%, #1e293b 100%) !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .navbar-gym .navbar-brand {
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: #fff !important;
+            letter-spacing: -0.03em;
+            text-shadow: 0 2px 20px rgba(56, 189, 248, 0.3);
+        }
+        .navbar-gym .navbar-brand span {
+            color: var(--nav-hover) !important;
+        }
+        .navbar-gym .nav-link {
+            color: rgba(248,250,252,0.9) !important;
+            font-weight: 500;
+            padding: 0.5rem 1rem !important;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .navbar-gym .nav-link:hover {
+            color: var(--nav-hover) !important;
+            background: rgba(56,189,248,0.1);
+        }
+        .navbar-gym .btn-pantalla {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white !important;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: none;
+        }
+        .navbar-gym .btn-pantalla:hover {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            color: white !important;
+            transform: translateY(-1px);
+        }
+        .gym-selector {
+            max-width: 200px;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            border-radius: 8px;
+        }
+        .gym-selector:focus {
+            background: rgba(255,255,255,0.15);
+            border-color: var(--nav-hover);
+            color: white;
+        }
+        .user-badge {
+            font-size: 0.85rem;
+            color: rgba(248,250,252,0.8);
+        }
+        /* Responsive: tablet y móvil */
+        @media (max-width: 991px) {
+            .navbar-gym .navbar-brand { font-size: 1.25rem; }
+            .navbar-gym .nav-link { padding: 0.5rem 0.75rem !important; font-size: 0.95rem; }
+            .navbar-gym .collapse { padding-top: 0.75rem; }
+            .navbar-gym .navbar-nav { margin-bottom: 0.5rem; justify-content: center !important; }
+            .navbar-gym .d-flex.gap-3 { flex-wrap: wrap; gap: 0.5rem !important; justify-content: flex-start; }
+            .navbar-gym .btn-pantalla { width: 100%; margin-top: 0.25rem; }
+        }
+        @media (max-width: 576px) {
+            body { font-size: 0.95rem; }
+            .navbar-gym .navbar-brand { font-size: 1.1rem; }
+            .navbar-gym .badge { font-size: 0.7rem; }
+            .navbar-gym .user-badge { font-size: 0.8rem; }
+            .navbar-gym .btn-outline-light { font-size: 0.85rem; padding: 0.35rem 0.6rem; }
+            main.py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        }
+        .input-group.responsive-input { max-width: 100%; }
+
+        /* Contenedor centrado de páginas */
+        main > .container,
+        main > .container.page-container {
+            max-width: 1140px;
+            margin-left: auto;
+            margin-right: auto;
+            padding-top: 1.25rem;
+            padding-bottom: 2.5rem;
+        }
+        main > .container.container-narrow {
+            max-width: 720px;
+        }
+        main > .container.dashboard-home {
+            max-width: 920px;
+        }
+
+        /* Títulos de página */
+        main .page-header h1,
+        main .page-header h2,
+        main > .container > h1:first-child,
+        main > .container > h2:first-child {
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+        }
+
+        /* Tarjetas con sombra */
+        main .card {
+            border: none;
+            border-radius: 14px;
+            background: #fff;
+            box-shadow:
+                0 1px 3px rgba(15, 23, 42, 0.06),
+                0 6px 20px rgba(15, 23, 42, 0.08);
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        main .card:hover {
+            box-shadow:
+                0 2px 6px rgba(15, 23, 42, 0.08),
+                0 12px 28px rgba(15, 23, 42, 0.12);
+        }
+        main .card .card-header.bg-primary,
+        main .card .card-header.bg-primary.text-white {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%) !important;
+            border: none;
+            padding: 1rem 1.25rem;
+            font-weight: 600;
+        }
+        main .card .card-header.bg-warning {
+            border: none;
+            font-weight: 600;
+        }
+        main .card.shadow-sm,
+        main .card.border-0 {
+            box-shadow:
+                0 1px 3px rgba(15, 23, 42, 0.06),
+                0 6px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        /* Botones */
+        main .btn {
+            border-radius: 10px;
+            font-weight: 500;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        main .btn-outline-primary:hover,
+        main .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(14, 165, 233, 0.3);
+        }
+        main .btn-outline-secondary:hover,
+        main .btn-secondary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.25);
+        }
+        main .btn-success:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+        }
+
+        /* Alertas */
+        main .alert {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+        }
+
+        /* Tablas dentro de cards */
+        main .table {
+            margin-bottom: 0;
+        }
+        main .table thead.table-light {
+            background: #f8fafc;
+        }
+
+        /* Dashboard inicio */
+        .dashboard-welcome {
+            text-align: center;
+            font-size: clamp(1.75rem, 4vw, 2.25rem);
+            letter-spacing: -0.03em;
+        }
+        .dashboard-home .dashboard-row {
+            justify-content: center;
+        }
+        .dashboard-gym-card {
+            overflow: hidden;
+        }
+        .dashboard-gym-card:hover {
+            transform: translateY(-6px);
+            box-shadow:
+                0 4px 8px rgba(15, 23, 42, 0.08),
+                0 20px 40px rgba(15, 23, 42, 0.14);
+        }
+        .dashboard-gym-card .card-body {
+            padding: 1.35rem;
+        }
+        .dashboard-gym-card .btn {
+            padding: 0.65rem 1rem;
+        }
+
+        @media (max-width: 576px) {
+            .table td, .table th { padding: 0.5rem; font-size: 0.9rem; }
+            .btn-group-sm .btn { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+            .d-flex.gap-2 { flex-wrap: wrap; }
+            main > .container { padding-left: 0.75rem; padding-right: 0.75rem; }
+        }
         @media print {
-            /* Ocultar elementos no deseables en la impresión */
-            nav, header, footer {
-                display: none;
-            }
-
-            /* Estilos para la impresión */
-            body {
-                font-size: 12px;
-                line-height: 1.5;
-            }
-
-            table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-
-            th, td {
-                border: 1px solid black;
-                padding: 5px;
-                text-align: left;
-            }
+            nav, header, footer { display: none !important; }
+            main .card { box-shadow: none !important; }
         }
     </style>
-    <title>Document</title>
+    {% block extra_css %}{% endblock %}
+    <title>{% block title %}Gym{% endblock %}</title>
 </head>
 <body>
     <header>
-        <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <nav class="navbar navbar-expand-lg navbar-dark navbar-gym">
             <div class="container-fluid">
-
-                <img src="{% static 'img/logo.jpeg' %}" width="3%" alt="Logo" id="logo-link" class="img-fluid">
-
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
+                <a class="navbar-brand" href="{% url 'index' %}">GYM<span>-PRO</span></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+                    <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                {% if user.is_authenticated %}
-                
-
-                    {% if request.session.tipo_usuario == 'admin' %}
-                        <li class="nav-item">
-                           <a class="nav-link active" aria-current="page" href='{% url 'tipo_usuario_list'%}'>Tipo de Usuarios</a>
-                        </li>
-                        <li class="nav-item">
-                           <a class="nav-link active" aria-current="page" href='{% url 'usuario_list'%}'>Usuarios</a>
-                        </li>
-
-                        <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'usuario_create'%}'>Crear usuario</a>
-                     </li>
-
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'gimnasio_lista'%}'>Gym</a>
-                     </li>
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'lista_tipos_mensualidad'%}'>Lista Mensualidades</a>
-                     </li>
-
-                     
-
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'producto_list'%}'>Productos</a>
-                     </li>
-
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'balance_diario'%}'>Diario</a>
-                     </li>
-
-                     
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'listado_ingresos'%}'>Ingresos Diarios</a>
-                     </li>
-                    
-                   
-                       
+                <div class="collapse navbar-collapse" id="navbarMain">
+                    {% if user.is_authenticated %}
+                    <ul class="navbar-nav mx-auto justify-content-center">
+                        {% if request.session.tipo_usuario == 'super_usuario' or request.session.tipo_usuario == 'admin' %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'usuario_list' %}">Cuentas</a></li>
+                        {% if request.session.tipo_usuario == 'super_usuario' %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'gimnasio_lista' %}">Gimnasios</a></li>
+                        {% endif %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'historiales_index' %}">Historiales</a></li>
+                        {% endif %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'lista_socios' %}">Socios</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'profesor_list' %}">Profesores</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'venta_crear' %}">Ventas</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'gastos_list' %}">Gastos</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'balance_diario' %}">Caja Diaria</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'historial_cajas' %}">Historial de caja</a></li>
+                        <li class="nav-item ms-2"><a class="nav-link btn btn-pantalla" href="{% url 'pantalla_ingreso' %}">Pantalla de Ingreso</a></li>
+                    </ul>
+                    <div class="d-flex align-items-center gap-3">
+                        {% if gimnasio_actual %}
+                            {% if caja_abierta %}
+                            <span class="badge bg-success">✓ Caja abierta — {{ caja_abierta.usuario_apertura.usuario }}</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">⚠ Caja cerrada</span>
+                            {% endif %}
+                        {% endif %}
+                        <span class="user-badge">{{ user.username }}</span>
+                        <a href="{% url 'logout' %}" class="btn btn-outline-light btn-sm">Cerrar sesión</a>
+                    </div>
                     {% endif %}
-                   
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'lista_socios'%}'>Socios</a>
-                      </li>
-                      <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'venta_crear'%}'>Ventas</a>
-                     </li>
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'lista_cuotas'%}'>Cuotas</a>
-                     </li>
-
-                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href='{% url 'extras_list'%}'>Extras</a>
-                     </li>
-                    
-
-                {% endif %}
-
-                </ul>
-                <form class="d-flex" role="search">
-                    <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
-                    <button class="btn btn-outline-success" type="submit">Search</button>
-                </form>
                 </div>
             </div>
-            </nav>
-
+        </nav>
     </header>
-    <main>
-    {% block content %}
-
-    {% endblock %}
-
+    <main class="py-4 px-2 px-md-3">
+    {% block content %}{% endblock %}
     </main>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    const logoLink = document.getElementById('logo-link');
-    logoLink.addEventListener('click', function() {
-        window.location.href = "{% url 'index' %}";
-    });
-
-    // Funcion para imprimir
-    function imprimirPagina() {
-        window.print();
-    }
-</script>
+        window.formatMonedaAR = function(n, decimales) {
+            var d = (decimales === undefined || decimales === null) ? 2 : parseInt(decimales, 10);
+            var x = parseFloat(n) || 0;
+            return x.toLocaleString('es-AR', {
+                minimumFractionDigits: d,
+                maximumFractionDigits: d
+            });
+        };
+        // Un solo clic para seleccionar y poder escribir (evitar doble clic en campos con 0)
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('input[type="number"], input[type="text"].monto-pago').forEach(function(input) {
+                input.addEventListener('focus', function() { this.select(); });
+            });
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

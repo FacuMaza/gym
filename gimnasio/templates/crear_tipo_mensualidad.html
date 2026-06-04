@@ -1,29 +1,42 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Crear Tipo de Mensualidad</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Crear Tipo de Mensualidad</h1>
-        <form method="post">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="{{ form.tipo.id_for_label }}">Tipo:</label>
-                {{ form.tipo }}
-            </div>
-            <div class="form-group">
-                <label for="{{ form.precio.id_for_label }}">Precio:</label>
-                {{ form.precio }}
-            </div>
-            <button type="submit" class="btn btn-success">Guardar</button>
-            <a href="{% url 'lista_tipos_mensualidad' %}" class="btn btn-secondary">Cancelar</a>
-        </form>
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="card shadow">
+        <div class="card-body">
+            <h2 class="card-title mb-4">Crear Tipo de Mensualidad</h2>
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Categoría</label>
+                        {{ form.categoria }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tipo / Descripción</label>
+                        {{ form.tipo }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Frecuencia</label>
+                        {{ form.frecuencia }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Precio ($)</label>
+                        {{ form.precio }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Clases incluidas (opcional)</label>
+                        {{ form.clases_incluidas }}
+                    </div>
+                </div>
+                {% for field in form %}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                {% endfor %}
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-success">Guardar</button>
+                    <a href="{% url 'lista_tipos_mensualidad' %}" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
     </div>
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+</div>
+{% endblock %}

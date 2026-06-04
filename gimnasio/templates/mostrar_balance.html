@@ -1,96 +1,275 @@
-{% extends "base.html" %}
-{% load static %}
+﻿{% extends "base.html" %}
+{% load gym_extras %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Balance Diario</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         flex-direction: column;
-         justify-content: center;
-         align-items: center;
-         min-height: 60vh;
-      }
-      .card {
-        width: 80%;
-        max-width: 800px; /* Ajustado el ancho máximo de la card */
-         display: flex;
-        flex-direction: column;
-      }
-       .card-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 2rem;
-      }
-       .balance-section {
-          margin-bottom: 1.5rem;
-        }
-         .button-container {
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
-    }
-    .spaced-list {
-      padding-left: 1.5rem; /* Añade un poco de espacio a la izquierda de la lista*/
-      margin-bottom: 1rem; /* Agrega un poco de espacio inferior a la lista*/
-      }
-    .spaced-list li {
-      margin-bottom: 0.3rem; /* Espacio entre los elementos de la lista */
-    }
-
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card">
-            <div class="card-body">
-                <h2 class="card-title text-center">Balance Diario para el Gimnasio: {{ gimnasio_nombre }}</h2>
-                <h3 class="text-center">Fecha: {{ fecha }}</h3>
-
-               <div class="balance-section">
-                   <h4>Ingresos de Hoy</h4>
-                    {% if ingresos %}
-                        <ul class="spaced-list">
-                        {% for ingreso in ingresos %}
-                            <li>{{ ingreso.descripcion }} - Monto: {{ ingreso.monto|default:"0" }} - Tipo: {{ ingreso.tipo_ingreso }}</li>
-                        {% endfor %}
-                        </ul>
-                        <p>Total Ingresos: {{ total_ingresos|default:"0"}}</p>
-                    {% else %}
-                         <p>No hay ingresos registrados para hoy.</p>
-                    {% endif %}
-                </div>
-
-               <div class="balance-section">
-                  <h4>Egresos de Hoy</h4>
-                    {% if egresos %}
-                         <ul class="spaced-list">
-                        {% for egreso in egresos %}
-                            <li>{{ egreso.descripcion }} - Monto: {{ egreso.monto|default:"0" }} - Tipo: {{ egreso.tipo_ingreso }}</li>
-                        {% endfor %}
-                         </ul>
-                        <p>Total Egresos: {{ total_egresos|default:"0"}}</p>
-                    {% else %}
-                        <p>No hay egresos registrados para hoy.</p>
-                    {% endif %}
-               </div>
-
-               <h3 class="text-center">Balance: {{ balance }}</h3>
-             </div>
+<div class="container page-container py-4 py-md-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 mb-md-5 flex-wrap gap-3">
+        <div>
+            <h2 class="mb-1 fw-bold">Caja Diaria — {{ gimnasio_nombre }}</h2>
+            <p class="text-muted mb-0 small">Movimientos de la sesión de caja actual</p>
         </div>
-    <div class="button-container">
-      <a href="{% url 'balance_diario' %}" class="btn btn-secondary">Volver a seleccionar Gimnasio</a>
-   </div>
+        {% if request.session.tipo_usuario == 'super_usuario' or request.session.tipo_usuario == 'admin' %}
+        <a href="{% url 'balance_diario' %}" class="btn btn-outline-secondary">Cambiar gimnasio</a>
+        {% endif %}
     </div>
 
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+    <div class="alert {% if caja_abierta and puede_operar_caja %}alert-success{% elif caja_abierta %}alert-info{% else %}alert-warning{% endif %} d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 p-3 p-md-4 mb-4 mb-md-5" role="alert">
+        <div>
+            {% if caja_abierta %}
+                <strong>✓ Caja abierta</strong> — Por {{ caja_abierta.usuario_apertura.usuario }} desde {{ caja_abierta.fecha_apertura|date:"d/m/Y H:i" }}
+                {% if not puede_operar_caja %}
+                <br><span class="small">Solo {{ caja_abierta.usuario_apertura.usuario }} puede vender y registrar movimientos en esta caja.</span>
+                {% endif %}
+            {% else %}
+                <strong>⚠ Caja cerrada</strong> — No podés realizar ventas ni movimientos de dinero hasta abrir la caja.
+            {% endif %}
+        </div>
+        <div>
+            {% if caja_abierta %}
+                {% if puede_cerrar %}
+                    <form method="post" action="{% url 'caja_cerrar' gimnasio_id %}" class="d-inline" onsubmit="return confirm('¿Cerrar la caja?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger">Cerrar caja</button>
+                    </form>
+                {% endif %}
+            {% elif not caja_abierta %}
+                <a href="{% url 'caja_abrir' gimnasio_id %}" class="btn btn-success">Abrir caja</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4 mb-md-5">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 caja-kpi">
+                <div class="card-body p-4">
+                    <h6 class="text-muted text-uppercase small mb-2">Total ingresos</h6>
+                    <p class="fs-3 fw-bold text-success mb-0">$ {{ total_ingresos|moneda_ar }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 caja-kpi">
+                <div class="card-body p-4">
+                    <h6 class="text-muted text-uppercase small mb-2">Total egresos</h6>
+                    <p class="fs-3 fw-bold text-danger mb-0">$ {{ total_egresos|moneda_ar }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 caja-kpi">
+                <div class="card-body p-4">
+                    <h6 class="text-muted text-uppercase small mb-2">Balance</h6>
+                    <p class="fs-3 fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">$ {{ balance|moneda_ar }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 bg-light">
+                <div class="card-body p-4">
+                    <h6 class="text-muted text-uppercase small mb-3">Cobrado por medio</h6>
+                    <div class="d-flex flex-column gap-2 small">
+                        <div class="d-flex justify-content-between">
+                            <span>💵 Efectivo</span>
+                            <span class="fw-semibold text-success">$ {{ ing_efectivo|moneda_ar }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>🏦 Transferencia</span>
+                            <span class="fw-semibold text-primary">$ {{ ing_transferencia|moneda_ar }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>💳 Tarjeta</span>
+                            <span class="fw-semibold text-secondary">$ {{ ing_tarjeta|moneda_ar }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 g-lg-5">
+        <div class="col-12 col-xl-6">
+            <div class="card border-0 shadow-sm h-100 caja-seccion">
+                <div class="card-header bg-white border-bottom py-3 px-4">
+                    <h5 class="mb-0 fw-semibold">Mensualidades cobradas</h5>
+                    <span class="text-muted small">{{ fecha|date:"d/m/Y" }} — esta sesión</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if cuotas %}
+                    <ul class="list-group list-group-flush">
+                        {% for c in cuotas %}
+                        <li class="list-group-item px-4 py-4">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">{{ c.socio.apellido }}, {{ c.socio.nombre }}</div>
+                                    <div class="text-muted small">{{ c.tipo_mensualidad }}</div>
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        {% if c.efectivo %}
+                                        <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success px-3 py-2">
+                                            Efectivo $ {{ c.efectivo|moneda_ar }}
+                                        </span>
+                                        {% endif %}
+                                        {% if c.transferencia %}
+                                        <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary px-3 py-2">
+                                            Transferencia $ {{ c.transferencia|moneda_ar }}{% if c.nombre_titular_transferencia %} — {{ c.nombre_titular_transferencia }}{% endif %}
+                                        </span>
+                                        {% endif %}
+                                        {% if c.tarjeta_credito %}
+                                        <span class="badge rounded-pill bg-secondary bg-opacity-10 text-secondary border px-3 py-2">
+                                            Tarjeta $ {{ c.tarjeta_credito|moneda_ar }}
+                                        </span>
+                                        {% endif %}
+                                        {% if not c.efectivo and not c.transferencia and not c.tarjeta_credito %}
+                                        <span class="badge rounded-pill bg-light text-muted border px-3 py-2">Sin desglose de pago</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="text-muted small">Total</div>
+                                    <div class="fs-5 fw-bold text-success">$ {{ c.precio|moneda_ar }}</div>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-5 mb-0">No hay mensualidades cobradas en esta sesión.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="card border-0 shadow-sm h-100 caja-seccion mb-4 mb-xl-0">
+                <div class="card-header bg-white border-bottom py-3 px-4">
+                    <h5 class="mb-0 fw-semibold">Ventas de productos</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if ventas %}
+                    <ul class="list-group list-group-flush">
+                        {% for v in ventas %}
+                        <li class="list-group-item px-4 py-4">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                <div>
+                                    <div class="fw-semibold">{{ v.producto.descripcion }} × {{ v.cantidad }}</div>
+                                    <div class="text-muted small">Vendió: {{ v.usuario.usuario }}</div>
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        {% if v.efectivo %}
+                                        <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success px-3 py-2">Efectivo $ {{ v.efectivo|moneda_ar }}</span>
+                                        {% endif %}
+                                        {% if v.transferencia %}
+                                        <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary px-3 py-2">Transferencia $ {{ v.transferencia|moneda_ar }}{% if v.nombre_titular %} — {{ v.nombre_titular }}{% endif %}</span>
+                                        {% endif %}
+                                        {% if v.tarjeta_credito %}
+                                        <span class="badge rounded-pill bg-secondary bg-opacity-10 text-secondary border px-3 py-2">Tarjeta $ {{ v.tarjeta_credito|moneda_ar }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="text-muted small">Total</div>
+                                    <div class="fs-5 fw-bold text-success">$ {{ v.monto_total|moneda_ar }}</div>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-5 mb-0">No hay ventas cobradas en esta sesión.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100 caja-seccion">
+                <div class="card-header bg-white border-bottom py-3 px-4">
+                    <h5 class="mb-0 fw-semibold">Profesores</h5>
+                    <span class="text-muted small">Cargos a cuenta (no es ingreso)</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if ventas_profesores %}
+                    <ul class="list-group list-group-flush">
+                        {% for v in ventas_profesores %}
+                        <li class="list-group-item px-4 py-3 d-flex justify-content-between align-items-start gap-2">
+                            <span>{{ v.producto.descripcion }} × {{ v.cantidad }} → {{ v.profesor.apellido }}, {{ v.profesor.nombre }}<br><small class="text-muted">Registró: {{ v.usuario.usuario }}</small></span>
+                            <span class="text-info fw-semibold">$ {{ v.monto_total|moneda_ar }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-5 mb-0">No hay cargos a profesores en esta sesión.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100 caja-seccion">
+                <div class="card-header bg-white border-bottom py-3 px-4">
+                    <h5 class="mb-0 fw-semibold">Pagos a profesores</h5>
+                    <span class="text-muted small">Egresos</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if pagos_profesor_hoy %}
+                    <ul class="list-group list-group-flush">
+                        {% for p in pagos_profesor_hoy %}
+                        <li class="list-group-item px-4 py-3">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <span>{{ p.profesor.apellido }}, {{ p.profesor.nombre }}</span>
+                                <span class="text-danger fw-semibold">$ {{ p.monto|moneda_ar }}</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mt-2 small">
+                                {% if p.efectivo %}<span class="badge bg-light border">Efectivo $ {{ p.efectivo|moneda_ar }}</span>{% endif %}
+                                {% if p.transferencia %}<span class="badge bg-light border">Transferencia $ {{ p.transferencia|moneda_ar }}</span>{% endif %}
+                                {% if p.tarjeta_credito %}<span class="badge bg-light border">Tarjeta $ {{ p.tarjeta_credito|moneda_ar }}</span>{% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-5 mb-0">No hay pagos a profesores en esta sesión.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card border-0 shadow-sm caja-seccion">
+                <div class="card-header bg-white border-bottom py-3 px-4">
+                    <h5 class="mb-0 fw-semibold">Egresos y gastos</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if egresos or gastos %}
+                    <ul class="list-group list-group-flush">
+                        {% for e in egresos %}
+                        <li class="list-group-item px-4 py-3 d-flex justify-content-between align-items-center">
+                            <span>{{ e.descripcion }}</span>
+                            <span class="text-danger fw-semibold">$ {{ e.monto|moneda_ar }}</span>
+                        </li>
+                        {% endfor %}
+                        {% for g in gastos %}
+                        <li class="list-group-item px-4 py-3 d-flex justify-content-between align-items-center">
+                            <span>{{ g.descripcion }} <span class="badge bg-light text-dark border">{{ g.get_forma_pago_display }}</span></span>
+                            <span class="text-danger fw-semibold">$ {{ g.monto|moneda_ar }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-5 mb-0">No hay egresos ni gastos en esta sesión.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5 pt-2 d-flex flex-wrap gap-3">
+        <a href="{% url 'historial_cajas' %}" class="btn btn-outline-primary">Historial de caja</a>
+        {% if request.session.tipo_usuario == 'super_usuario' or request.session.tipo_usuario == 'admin' %}
+        <a href="{% url 'historial_balances' %}" class="btn btn-outline-secondary">Historial de balances (admin)</a>
+        {% endif %}
+    </div>
+</div>
+<style>
+.caja-kpi .card-body { min-height: 7rem; }
+.caja-seccion { border-radius: 12px; overflow: hidden; }
+.caja-seccion .list-group-item + .list-group-item { border-top: 1px solid rgba(0,0,0,.06); }
+</style>
 {% endblock %}

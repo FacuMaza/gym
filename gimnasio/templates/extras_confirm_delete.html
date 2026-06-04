@@ -1,11 +1,16 @@
 {% extends 'base.html' %}
-
 {% block content %}
-    <h2>Confirmar Eliminación</h2>
-    <p>¿Estás seguro de que deseas eliminar el extra "{{ extra.descripcion }}"?</p>
-    <form method="post">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-danger">Sí, Eliminar</button>
-        <a href="{% url 'extras_list' %}" class="btn btn-secondary">Cancelar</a>
-    </form>
+<div class="container page-container container-narrow py-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="mb-3">Confirmar Eliminación</h2>
+            <p>¿Estás seguro de que deseas eliminar el extra <strong>"{{ extra.descripcion }}"</strong>?</p>
+            <form method="post" class="d-flex flex-wrap gap-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">Sí, Eliminar</button>
+                <a href="{% url 'extras_list' %}" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}

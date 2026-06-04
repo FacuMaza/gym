@@ -5,6 +5,8 @@ box.sqlite3
 __pycache__/
 *.sqlite3
 db.sqlite3
+.env
+.env.*
 /venv/
 .venv/
 venv/

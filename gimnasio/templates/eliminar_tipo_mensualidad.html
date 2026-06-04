@@ -1,22 +1,16 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Eliminar Tipo de Mensualidad</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Eliminar Tipo de Mensualidad</h1>
-        <p>¿Estás seguro de que quieres eliminar el tipo de mensualidad <strong>{{ tipo.tipo }}</strong> con precio <strong>{{ tipo.precio }}</strong>?</p>
-        <form method="post">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger">Sí, eliminar</button>
-            <a href="{% url 'lista_tipos_mensualidad' %}" class="btn btn-secondary">Cancelar</a>
-        </form>
+{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container container-narrow py-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="mb-3">Eliminar Tipo de Mensualidad</h2>
+            <p>¿Estás seguro de que quieres eliminar el tipo de mensualidad <strong>{{ tipo.tipo }}</strong> con precio <strong>$ {{ tipo.precio|moneda_ar }}</strong>?</p>
+            <form method="post" class="d-flex flex-wrap gap-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">Sí, eliminar</button>
+                <a href="{% url 'detalle_plan_mensualidad' tipo.categoria_id %}" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
     </div>
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+</div>
+{% endblock %}

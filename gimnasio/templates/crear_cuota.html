@@ -1,17 +1,22 @@
 {% extends 'base.html' %}
-
 {% block content %}
-    <h2>Crear Cuota</h2>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn btn-primary">Guardar Cuota</button>
-    </form>
-    {% if messages %}
-        <ul class="messages">
-            {% for message in messages %}
-                <li class="{{ message.tags }}">{{ message }}</li>
-            {% endfor %}
-        </ul>
-    {% endif %}
+<div class="container page-container container-narrow py-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="mb-4">Crear Cuota</h2>
+            <form method="post">
+                {% csrf_token %}
+                {{ form.as_p }}
+                <button type="submit" class="btn btn-primary mt-3">Guardar Cuota</button>
+            </form>
+            {% if messages %}
+            <ul class="messages list-unstyled mt-3 mb-0">
+                {% for message in messages %}
+                <li class="alert alert-{{ message.tags }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -1,48 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Historial de Ingresos</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-       .center-container {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 60vh;
-        }
-         .card {
-          width: 90%;
-          max-width: 1200px;
-           display: flex;
-            flex-direction: column;
-        }
-         .card-body {
-            flex: 1;
-           display: flex;
-            flex-direction: column;
-            padding: 2rem;
-        }
-         .table-container {
-            flex: 1;
-             overflow-y: auto;
-        }
-         .button-container {
-          display: flex;
-          justify-content: center;
-          margin-top: 1rem;
-           margin-bottom: 0.5rem;
-        }
-      
-       
-    </style>
-</head>
-<body>
-<div class="center-container">
+<div class="container page-container py-4">
    <div class="card">
         <div class="card-body">
             <h2 class="card-title text-center">Historial de Ingresos</h2>
@@ -88,9 +47,5 @@
         </div>
     </div>
 </div>
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+
 {% endblock %}

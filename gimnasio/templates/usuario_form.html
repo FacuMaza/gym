@@ -1,42 +1,61 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Formulario de Usuario</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: flex-start;
-         min-height: 60vh;
-          padding-top: 10vh;
-      }
-      .button-container {
-        display: flex;
-        justify-content: center; /* Centra los botones horizontalmente */
-        margin-top: 1rem; /* Añade un espacio arriba de los botones */
-    }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card" style="width: 60%; max-width: 600px;">
-            <div class="card-body">
-                <h2 class="card-title">Formulario de Usuario</h2>
-                <form method="post">
-                    {% csrf_token %}
-                    {{ form.as_p }}  {# Esto renderiza todos los campos del formulario #}
-                    <div class="button-container">
-                        <button type="submit" class="btn btn-primary">Guardar</button>
-                    </div>
-                </form>
-            </div>
+<div class="container page-container container-narrow py-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title mb-4">Formulario de Usuario</h2>
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label">{{ form.username.label }}</label>
+                    {{ form.username }}
+                    {% if form.username.errors %}<div class="text-danger small">{{ form.username.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {% if form.email.errors %}<div class="text-danger small">{{ form.email.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.password.label }}</label>
+                    {{ form.password }}
+                    {% if form.password.errors %}<div class="text-danger small">{{ form.password.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.tipo_usuario.label }}</label>
+                    {{ form.tipo_usuario }}
+                    {% if form.tipo_usuario.errors %}<div class="text-danger small">{{ form.tipo_usuario.errors.0 }}</div>{% endif %}
+                </div>
+                <div id="gym-section" class="mb-4 p-3 border rounded bg-light" style="display:none;">
+                    <label class="form-label fw-bold">{{ form.gimnasios.label }}</label>
+                    <p class="text-muted small mb-2">Seleccione el gimnasio donde trabajará el empleado.</p>
+                    {{ form.gimnasios }}
+                    {% if form.gimnasios.errors %}<div class="text-danger small mt-1">{{ form.gimnasios.errors.0 }}</div>{% endif %}
+                    {% if form.non_field_errors %}
+                        {% for err in form.non_field_errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                    {% endif %}
+                </div>
+                <div class="d-flex justify-content-center mt-3">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
         </div>
     </div>
-</body>
-</html>
+</div>
+<script>
+(function() {
+    var tipoSelect = document.querySelector('select[name="tipo_usuario"]');
+    var gymSection = document.getElementById('gym-section');
+    function toggle() {
+        var opt = tipoSelect.options[tipoSelect.selectedIndex];
+        var esEmpleado = opt && opt.text.trim().toLowerCase() === 'empleado';
+        gymSection.style.display = esEmpleado ? 'block' : 'none';
+        var gymSelect = gymSection.querySelector('select');
+        if (gymSelect) gymSelect.required = esEmpleado;
+    }
+    tipoSelect.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
 {% endblock %}

@@ -1,91 +1,89 @@
-{% extends "base.html" %}
-{% load static %}
+﻿{% extends "base.html" %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Listado de Ingresos Diarios</title>
-     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        .center-container {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 60vh;
-        }
-        .card {
-          width: 90%;
-          max-width: 1200px;
-           display: flex;
-            flex-direction: column;
-        }
-         .card-body {
-            flex: 1;
-           display: flex;
-            flex-direction: column;
-            padding: 2rem;
-        }
-         .table-container {
-            flex: 1;
-             overflow-y: auto;
-        }
-         .button-container {
-          display: flex;
-          justify-content: center;
-          margin-top: 1rem;
-           margin-bottom: 0.5rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-      <div class="card">
-        <div class="card-body">
-           <h2 class="card-title text-center">Ingresos del día: {{ fecha }}</h2>
-             <div class="table-container">
-                {% if ingresos %}
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Apellido</th>
-                                <th>DNI</th>
-                                <th>Hora de Ingreso</th>
-                                <th>Fecha de Vencimiento</th>
-                                <th>Clases Restantes</th>
-                                <th>Tipo de Mensualidad</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for ingreso in ingresos %}
-                            <tr>
-                                <td>{{ ingreso.nombre }}</td>
-                                <td>{{ ingreso.apellido }}</td>
-                                <td>{{ ingreso.dni }}</td>
-                                <td>{{ ingreso.fecha_ingreso }}</td>
-                                <td>{{ ingreso.fecha_vencimiento|date:"Y-m-d"|default:"-" }}</td>
-                                <td>{{ ingreso.clases_restantes|default:"-" }}</td>
-                                <td>{{ ingreso.tipo_mensualidad }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                {% else %}
-                   <p>No se registraron ingresos en este día.</p>
-                {% endif %}
-             </div>
-            <div class="button-container">
-             <a href="{% url 'historial_ingresos' %}" class="btn btn-primary">Historial de Ingresos</a>
-           </div>
-          </div>
-      </div>
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0 fw-bold">Ingresos del día</h2>
+        <a href="{% url 'historial_ingresos' %}" class="btn btn-outline-primary">Historial de Ingresos</a>
     </div>
 
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+    <form method="get" class="card p-4 mb-4 shadow-sm">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Fecha</label>
+                <input type="date" name="fecha" id="input-fecha" class="form-control" value="{{ fecha }}">
+            </div>
+            <div class="col-12 col-md-2">
+                <button type="submit" class="btn btn-primary">Ver ingresos</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-light py-3">
+            <h5 class="mb-0 fw-semibold">{{ fecha_obj|date:"d/m/Y" }}</h5>
+            {% if ingresos %}<span class="text-muted small">{{ ingresos|length }} registro{{ ingresos|length|pluralize }}</span>{% endif %}
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                {% if ingresos %}
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Apellido</th>
+                            <th>DNI</th>
+                            <th>Hora de ingreso</th>
+                            <th>Vencimiento</th>
+                            <th>Clases restantes</th>
+                            <th>Plan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ingreso in ingresos %}
+                        <tr{% if ingreso.vencido %} class="table-danger"{% endif %}>
+                            <td class="fw-semibold">{{ ingreso.nombre }}</td>
+                            <td>{{ ingreso.apellido }}</td>
+                            <td>{{ ingreso.dni }}</td>
+                            <td>{{ ingreso.fecha_ingreso|date:"H:i" }}</td>
+                            <td>
+                                {% if ingreso.vencido %}
+                                    <span class="text-danger fw-bold">MES VENCIDO</span>
+                                    <small class="text-danger d-block">Venció el {{ ingreso.fecha_vencimiento|date:"d/m/Y" }}</small>
+                                {% elif ingreso.fecha_vencimiento %}
+                                    {{ ingreso.fecha_vencimiento|date:"d/m/Y" }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if ingreso.clases_restantes is not None %}
+                                    <span class="badge bg-info">{{ ingreso.clases_restantes }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ ingreso.tipo_mensualidad }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <p class="mb-0">No se registraron ingresos en este día.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var hoy = new Date();
+    var input = document.getElementById('input-fecha');
+    if (input && !input.value) {
+        input.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');
+    }
+})();
+</script>
 {% endblock %}

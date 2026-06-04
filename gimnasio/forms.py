@@ -2,20 +2,66 @@ from django import forms
 from django.forms import DateInput
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from datetime import date
 from .models import *
 
 
 
 class SocioForm(forms.ModelForm):
-    gimnasio = forms.ModelChoiceField(queryset=Gimnasio.objects.all(), empty_label="Seleccione un Gimnasio",widget=forms.Select(attrs={'class': 'form-control'}))
+    codigo_pais = forms.ChoiceField(
+        choices=[
+            ('+549', '🇦🇷 +549'),
+            ('+591', '🇧🇴 +591'),
+        ],
+        initial='+549',
+        widget=forms.Select(attrs={'class': 'form-select', 'style': 'max-width: 150px;'}),
+        label='Prefijo país'
+    )
+
     class Meta:
         model = Socio
-        fields = ['nombre', 'apellido', 'dni','gimnasio', 'tipo_mensualidad', 'clases_restantes']  # Eliminamos el campo usuario
+        fields = ['nombre', 'apellido', 'dni', 'celular', 'tipo_mensualidad']
         widgets = {
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'apellido': forms.TextInput(attrs={'class': 'form-control'}),
             'dni': forms.TextInput(attrs={'class': 'form-control'}),
+            'celular': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: 3875123123'}),
         }
+
+    def __init__(self, *args, gimnasio=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Si el socio ya tiene celular guardado, separar prefijo + número local para edición cómoda.
+        celular_actual = (self.instance.celular or '').strip() if self.instance and self.instance.pk else ''
+        if celular_actual.startswith('+549'):
+            self.initial['codigo_pais'] = '+549'
+            self.initial['celular'] = celular_actual[4:]
+        elif celular_actual.startswith('+591'):
+            self.initial['codigo_pais'] = '+591'
+            self.initial['celular'] = celular_actual[4:]
+
+        if gimnasio:
+            self.gimnasio_fijo = gimnasio
+            self.fields['tipo_mensualidad'].queryset = TipoMensualidad.objects.filter(categoria__gimnasio=gimnasio).distinct()
+        else:
+            self.gimnasio_fijo = None
+
+    def clean(self):
+        cleaned = super().clean()
+        numero_local = (cleaned.get('celular') or '').strip()
+        codigo_pais = (cleaned.get('codigo_pais') or '+549').strip()
+
+        if numero_local:
+            numero_local = ''.join(ch for ch in numero_local if ch.isdigit())
+            if not numero_local:
+                self.add_error('celular', 'Ingresá un número válido (solo dígitos).')
+            else:
+                # Guardamos en formato E.164 para máxima compatibilidad con Twilio.
+                cleaned['celular'] = f'{codigo_pais}{numero_local}'
+        else:
+            cleaned['celular'] = ''
+
+        return cleaned
 
 
 class TipoUsuarioForm(forms.ModelForm):
@@ -45,10 +91,24 @@ class UsuarioForm(forms.Form):
         label="Contraseña"
     )
     tipo_usuario = forms.ModelChoiceField(
-        queryset=TipoUsuario.objects.all(),
+        queryset=TipoUsuario.objects.exclude(tipousuario='super_usuario'),
         widget=forms.Select(attrs={'class': 'form-control'}),
         label="Tipo de Usuario"
     )
+    gimnasios = forms.ModelMultipleChoiceField(
+        queryset=Gimnasio.objects.all().order_by('nombre', 'direccion'),
+        widget=forms.SelectMultiple(attrs={'class': 'form-select'}),
+        label="Gimnasio(s)",
+        required=False
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        tipo = cleaned.get('tipo_usuario')
+        gimnasios = cleaned.get('gimnasios') or []
+        if tipo and tipo.tipousuario == 'empleado' and not gimnasios:
+            raise ValidationError('Debe asignar al menos un gimnasio cuando el tipo es empleado.')
+        return cleaned
 
     def save(self, commit=True):
         username = self.cleaned_data['username']
@@ -70,6 +130,13 @@ class UsuarioForm(forms.Form):
             contrasena=user.password  # El password ya viene hasheado
         )
 
+        # Asignar gimnasios: los seleccionados, o todos si es admin sin selección
+        gimnasios = list(self.cleaned_data.get('gimnasios', []))
+        if not gimnasios and tipo_usuario.tipousuario == 'admin':
+            gimnasios = list(Gimnasio.objects.all())
+        for g in gimnasios:
+            UsuarioGimnasio.objects.get_or_create(usuario=usuario_custom, gimnasio=g)
+
         return usuario_custom
 
 
@@ -80,20 +147,53 @@ class LoginForm(forms.Form):
 class GimnasioForm(forms.ModelForm):
     class Meta:
         model = Gimnasio
-        fields = ['direccion'] # Campos que quieres en el formulario
+        fields = ['nombre', 'direccion']
         widgets = {
-            'direccion': forms.TextInput(attrs={'class': 'form-control'}),    }
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre del gimnasio'}),
+            'direccion': forms.TextInput(attrs={'class': 'form-control'}),
+        }
 
 
+
+
+class CrearPlanMensualidadForm(forms.Form):
+    """Solo nombre del plan - el usuario lo arma como quiere."""
+    nombre = forms.CharField(
+        max_length=100,
+        label="Nombre del plan de mensualidad",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Plan Fitness, Taebo, etc.'})
+    )
+
+
+class CrearOpcionMensualidadForm(forms.Form):
+    """Opciones dentro del plan: libre, 12 clases, 8 clases, etc."""
+    nombre = forms.CharField(
+        max_length=255,
+        label="Nombre (ej: libre, 12 clases, 8 clases)",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: libre, 12 clases, 8 clases'})
+    )
+    precio = forms.DecimalField(
+        max_digits=10, decimal_places=2,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        label="Precio ($)"
+    )
+    clases_incluidas = forms.IntegerField(
+        required=False,
+        min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Dejar vacío si es pase libre'}),
+        label="Clases incluidas (opcional, para contabilizar)"
+    )
 
 
 class TipoMensualidadForm(forms.ModelForm):
+    """Editar una opción existente."""
     class Meta:
         model = TipoMensualidad
-        fields = ['tipo', 'precio'] #Especifica qué campos del modelo se incluirán en el formulario
-        widgets = { # Personaliza el aspecto de los campos del formulario
+        fields = ['tipo', 'precio', 'clases_incluidas']
+        widgets = {
             'tipo': forms.TextInput(attrs={'class': 'form-control'}),
-            'precio': forms.NumberInput(attrs={'class': 'form-control'})
+            'precio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'clases_incluidas': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Vacío = pase libre'})
         }
 
 from django import forms
@@ -109,8 +209,7 @@ class AsignarMensualidadForm(forms.Form):
         queryset=TipoMensualidad.objects.all(),
         label="Seleccionar Nueva Mensualidad",
         required=False,
-        widget=forms.Select(),
-        to_field_name='tipo',
+        widget=forms.Select(attrs={'class': 'form-select'}),
         empty_label="Seleccione una mensualidad"
     )
     metodo_pago = forms.ChoiceField(choices=[
@@ -124,7 +223,13 @@ class AsignarMensualidadForm(forms.Form):
     def __init__(self, *args, **kwargs):
         initial_socio = kwargs.pop('initial_socio', None)
         initial_mensualidad = kwargs.pop('initial_mensualidad', None)
+        gimnasio = kwargs.pop('gimnasio', None)
         super().__init__(*args, **kwargs)
+        if gimnasio or (initial_socio and initial_socio.gimnasio):
+            gym = gimnasio or initial_socio.gimnasio
+            from .models import CategoriaMensualidad
+            qs = TipoMensualidad.objects.filter(categoria__gimnasio=gym)
+            self.fields['tipo_mensualidad'].queryset = qs.distinct().order_by('categoria__nombre', 'tipo')
         if initial_socio:
             self.initial['socio'] = f"{initial_socio.nombre} {initial_socio.apellido}"
             self.fields['socio'].widget.attrs['value'] = f"{initial_socio.nombre} {initial_socio.apellido}"
@@ -158,10 +263,10 @@ class AsignarMensualidadForm(forms.Form):
                      elif cleaned_data['tipo_mensualidad'].precio != monto:
                                   self.add_error('monto', 'El monto recibido no coincide con el precio de la mensualidad seleccionada.')
                      #Validacion de clases restantes
-                     if cleaned_data['tipo_mensualidad'].tipo != 'Pase Libre':
+                     if cleaned_data['tipo_mensualidad'].frecuencia == 'clases':
                            self.fields['clases_restantes'].required = True
-                           if clases_restantes is None and self.fields['clases_restantes'].required:
-                                self.add_error('clases_restantes', 'Este campo es obligatorio cuando la mensualidad no es Pase Libre.')
+                           if clases_restantes is None:
+                                self.add_error('clases_restantes', 'Obligatorio para mensualidad por clases.')
                      else:
                         self.fields['clases_restantes'].required = False
                         
@@ -175,10 +280,10 @@ class AsignarMensualidadForm(forms.Form):
                            elif tipo_mensualidad_seleccionada.precio != monto:
                                   self.add_error('monto', 'El monto recibido no coincide con el precio de la mensualidad seleccionada.')
                            
-                           if cleaned_data['tipo_mensualidad'].tipo != 'Pase Libre':
+                           if cleaned_data['tipo_mensualidad'].frecuencia == 'clases':
                               self.fields['clases_restantes'].required = True
-                              if clases_restantes is None and self.fields['clases_restantes'].required:
-                                self.add_error('clases_restantes', 'Este campo es obligatorio cuando la mensualidad no es Pase Libre.')
+                              if clases_restantes is None:
+                                self.add_error('clases_restantes', 'Obligatorio para mensualidad por clases.')
                            else:
                                  self.fields['clases_restantes'].required = False
 
@@ -187,6 +292,48 @@ class AsignarMensualidadForm(forms.Form):
         return cleaned_data
 
     
+class CobrarMensualidadForm(forms.Form):
+    """Permite una o varias formas de pago. La suma debe igualar al total."""
+    efectivo = forms.DecimalField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control monto-pago', 'placeholder': '0', 'step': '0.01'}),
+        label="Efectivo ($)"
+    )
+    transferencia = forms.DecimalField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control monto-pago', 'placeholder': '0', 'step': '0.01'}),
+        label="Transferencia ($)"
+    )
+    tarjeta_credito = forms.DecimalField(
+        required=False, initial=0, min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control monto-pago', 'placeholder': '0', 'step': '0.01'}),
+        label="Tarjeta ($)"
+    )
+    nombre_titular = forms.CharField(
+        max_length=255,
+        required=False,
+        label="Nombre del titular (obligatorio si usás transferencia)",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Juan Pérez'})
+    )
+
+    def __init__(self, *args, precio_total=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.precio_total = precio_total
+
+    def clean(self):
+        cleaned = super().clean()
+        ef = float(cleaned.get('efectivo') or 0)
+        tr = float(cleaned.get('transferencia') or 0)
+        tc = float(cleaned.get('tarjeta_credito') or 0)
+        total = ef + tr + tc
+        precio = float(self.precio_total or 0)
+        if precio and abs(total - precio) > 0.01:
+            raise ValidationError(f'La suma de los pagos (${total:.2f}) debe ser igual al total (${precio:.2f}).')
+        if tr > 0 and not (cleaned.get('nombre_titular') or '').strip():
+            raise ValidationError('Debe ingresar el nombre del titular cuando hay pago por transferencia.')
+        return cleaned
+
+
 class SeleccionarFechaRenovacionForm(forms.Form):
     fecha_renovacion = forms.DateField(widget=DateInput(attrs={'type': 'date', 'min': str(date.today())}))
 
@@ -195,6 +342,65 @@ class ProductoForm(forms.ModelForm):
     class Meta:
         model = Producto
         fields = ['descripcion', 'cantidad', 'gimnasio', 'precio']
+
+
+class ProfesorForm(forms.ModelForm):
+    class Meta:
+        model = Profesor
+        fields = ['nombre', 'apellido', 'telefono', 'activo']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre'}),
+            'apellido': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellido'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Teléfono (opcional)'}),
+            'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+
+class AdelantoForm(forms.ModelForm):
+    class Meta:
+        model = Adelanto
+        fields = ['monto', 'descripcion', 'fecha']
+        widgets = {
+            'monto': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0.01', 'placeholder': '0'}),
+            'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Adelanto'}),
+            'fecha': forms.HiddenInput(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['fecha'].initial = date.today()
+
+
+class PagoProfesorForm(forms.Form):
+    """Formulario para registrar el pago que hace el profesor (cuando abona su deuda)."""
+    METODO_CHOICES = [
+        ('efectivo', 'Efectivo'),
+        ('transferencia', 'Transferencia'),
+        ('tarjeta_credito', 'Tarjeta'),
+    ]
+    monto = forms.DecimalField(
+        min_value=0.01,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0'}),
+        label='Monto a pagar'
+    )
+    metodo_pago = forms.ChoiceField(
+        choices=METODO_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Forma de pago'
+    )
+    nombre_titular = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre del titular', 'id': 'id_titular_pago'}),
+        label='Titular'
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        metodo = cleaned.get('metodo_pago')
+        titular = (cleaned.get('nombre_titular') or '').strip()
+        if metodo in ('transferencia', 'tarjeta_credito') and not titular:
+            raise ValidationError('Ingresá el nombre del titular cuando usás transferencia o tarjeta.')
+        return cleaned
 
 
 class VentaForm(forms.ModelForm):
@@ -207,15 +413,23 @@ class VentaForm(forms.ModelForm):
     efectivo = forms.DecimalField(required=False, initial=0)
     transferencia = forms.DecimalField(required=False, initial=0)
     tarjeta_credito = forms.DecimalField(required=False, initial=0)
+    nombre_titular = forms.CharField(required=False, label='Nombre del titular', widget=forms.TextInput(attrs={'placeholder': 'Ej: Juan Pérez'}))
 
     class Meta:
         model = Venta
-        fields = ['producto', 'cantidad', 'efectivo', 'transferencia', 'tarjeta_credito']
+        fields = ['producto', 'cantidad', 'profesor', 'efectivo', 'transferencia', 'tarjeta_credito', 'nombre_titular']
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, gimnasio=None, **kwargs):
         super(VentaForm, self).__init__(*args, **kwargs)
-        self.fields['producto'].queryset = Producto.objects.all()
+        qs = Producto.objects.filter(gimnasio=gimnasio) if gimnasio else Producto.objects.all()
+        self.fields['producto'].queryset = qs
         self.fields['producto'].label_from_instance = self.producto_label_from_instance
+        # Profesores del gimnasio (opcional)
+        from .models import Profesor
+        prof_qs = Profesor.objects.filter(gimnasio=gimnasio, activo=True).order_by('apellido', 'nombre') if gimnasio else Profesor.objects.filter(activo=True)
+        self.fields['profesor'].queryset = prof_qs
+        self.fields['profesor'].required = False
+        self.fields['profesor'].empty_label = '— Sin profesor (venta general)'
 
     def producto_label_from_instance(self, obj):
        return f"{obj.descripcion} - ${obj.precio}"
@@ -224,6 +438,7 @@ class VentaForm(forms.ModelForm):
         cleaned_data = super().clean()
         producto = cleaned_data.get('producto')
         cantidad = cleaned_data.get('cantidad')
+        profesor = cleaned_data.get('profesor')
         efectivo = cleaned_data.get('efectivo') or 0
         transferencia = cleaned_data.get('transferencia') or 0
         tarjeta_credito = cleaned_data.get('tarjeta_credito') or 0
@@ -235,11 +450,20 @@ class VentaForm(forms.ModelForm):
                      f'No hay suficiente stock para este producto. Hay {producto.cantidad} disponibles.'
                 )
         
-        if total is not None:
-          total = float(total)
-          suma_pagos = float(efectivo) + float(transferencia) + float(tarjeta_credito)
-          if suma_pagos != total:
-            raise ValidationError("La suma de los pagos debe ser igual al total.")
+        # Si es venta a profesor (cuenta), no validar pagos; se carga a su cuenta
+        if profesor:
+            cleaned_data['efectivo'] = 0
+            cleaned_data['transferencia'] = 0
+            cleaned_data['tarjeta_credito'] = 0
+        elif total is not None:
+            total = float(total)
+            suma_pagos = float(efectivo) + float(transferencia) + float(tarjeta_credito)
+            if suma_pagos != total:
+                raise ValidationError("La suma de los pagos debe ser igual al total.")
+            if (float(transferencia) > 0 or float(tarjeta_credito) > 0):
+                nombre_titular = (cleaned_data.get('nombre_titular') or '').strip()
+                if not nombre_titular:
+                    raise ValidationError("El nombre del titular es obligatorio cuando usás transferencia o tarjeta.")
            
         return cleaned_data
 
@@ -252,15 +476,21 @@ class ExtrasForm(forms.ModelForm):
     fecha = forms.DateField(widget=forms.HiddenInput(), initial=timezone.now().date())
     producto = forms.ModelChoiceField(
         queryset=Producto.objects.all(),
-        required=False,  # Puede que no siempre se asocie a un producto
-        empty_label="--- Seleccionar Producto (Opcional) ---", #opcional un producto
+        required=False,
+        empty_label="--- Seleccionar Producto (Opcional) ---",
         label="Producto (Opcional)"
     )
 
     class Meta:
         model = extras
         fields = ['descripcion', 'monto', 'gimnasio', 'tipo', 'producto']
-        # eliminamos el widgets de fecha
+
+    def __init__(self, *args, gimnasio=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if gimnasio:
+            self.fields['gimnasio'].queryset = Gimnasio.objects.filter(pk=gimnasio.pk)
+            self.initial['gimnasio'] = gimnasio
+            self.fields['producto'].queryset = Producto.objects.filter(gimnasio=gimnasio)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -285,6 +515,18 @@ class HistorialIngresosForm(forms.Form):
           initial=date.today(),
         required = False,
     )
+
+class GastoForm(forms.Form):
+    """Formulario para registrar un gasto (luz, alquiler, etc.)."""
+    descripcion = forms.CharField(max_length=255, label="Descripción", widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Pago de luz'}))
+    monto = forms.FloatField(label="Monto", min_value=0.01, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}))
+    forma_pago = forms.ChoiceField(
+        choices=[('efectivo', 'Efectivo'), ('transferencia', 'Transferencia'), ('tarjeta_credito', 'Tarjeta de Crédito')],
+        label="Forma de pago",
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    fecha = forms.DateField(label="Fecha", widget=forms.HiddenInput(), initial=date.today)
+
 
 ## SELECCIONAR GYM DENTRO DEL DIARIO
 

@@ -1,3 +1,4 @@
+from django import forms as django_forms
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -5,18 +6,122 @@ from django.contrib.auth.hashers import check_password
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import login, logout,authenticate
 from django.urls import reverse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from django.http import JsonResponse
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import F
 import json
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
+from django.utils import timezone as tz
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
 from .models import *
 from .forms import *
+from .twilio_utils import send_sms, send_whatsapp, send_email
+from django.db.models import Sum
+from .context_processors import gimnasio_context
+from django.utils import timezone as tz
+
+
+def get_gimnasio_actual(request):
+    """Obtiene el gimnasio actual de la sesión. Si no hay, None (superuser ve todo hasta que filtre)."""
+    from .context_processors import gimnasio_context
+    ctx = gimnasio_context(request)
+    return ctx.get('gimnasio_actual')
+
+
+def get_usuario_actual(request):
+    """Obtiene el Usuario (modelo) del request.user. Para superuser crea/obtiene uno."""
+    if request.user.is_superuser:
+        admin_tipo = TipoUsuario.objects.filter(tipousuario='admin').first() or TipoUsuario.objects.first()
+        u, _ = Usuario.objects.get_or_create(usuario=request.user.username, defaults={'tipo_usuario': admin_tipo, 'contrasena': request.user.password})
+        return u
+    return Usuario.objects.filter(usuario=request.user.username).first()
+
+
+def get_caja_abierta(gym):
+    """Retorna la caja abierta para el gimnasio, o None si no hay."""
+    if not gym:
+        return None
+    return Caja.objects.filter(gimnasio=gym, fecha_cierre__isnull=True).select_related('usuario_apertura').first()
+
+
+def usuario_puede_operar_caja(request, caja):
+    """True solo si el usuario logueado es quien abrió la caja."""
+    if not caja:
+        return False
+    usuario = get_usuario_actual(request)
+    return bool(usuario and caja.usuario_apertura_id == usuario.id)
+
+
+def calcular_totales_caja(caja):
+    """Totales de ingresos/egresos de una sesión de caja."""
+    ing_qs = ingresos.objects.filter(caja=caja).exclude(tipo_ingreso='Pago profesor')
+    egr_qs = egreso.objects.filter(caja=caja)
+    gast_qs = Gasto.objects.filter(caja=caja)
+    ti = sum(i.monto for i in ing_qs if i.monto)
+    te = sum(e.monto for e in egr_qs if e.monto) + sum(g.monto for g in gast_qs if g.monto)
+    return ti, te, ti - te
+
+
+def movimientos_caja_abierta(caja):
+    """Querysets de movimientos de la sesión de caja actual."""
+    if not caja:
+        return {
+            'ingresos': ingresos.objects.none(),
+            'egresos': egreso.objects.none(),
+            'gastos': Gasto.objects.none(),
+            'cuotas': Cuota.objects.none(),
+            'ventas': Venta.objects.none(),
+            'ventas_profesores': Venta.objects.none(),
+            'pagos_profesor': PagoProfesor.objects.none(),
+        }
+    return {
+        'ingresos': ingresos.objects.filter(caja=caja).exclude(tipo_ingreso='Pago profesor'),
+        'egresos': egreso.objects.filter(caja=caja),
+        'gastos': Gasto.objects.filter(caja=caja),
+        'cuotas': Cuota.objects.filter(caja=caja).select_related('socio', 'tipo_mensualidad'),
+        'ventas': Venta.objects.filter(caja=caja, profesor__isnull=True).select_related('producto', 'usuario'),
+        'ventas_profesores': Venta.objects.filter(caja=caja).exclude(profesor__isnull=True).select_related('producto', 'profesor', 'usuario'),
+        'pagos_profesor': PagoProfesor.objects.filter(caja=caja).select_related('profesor'),
+    }
+
+
+def requiere_caja_abierta(view_func):
+    """Decorador: exige caja abierta y que la haya abierto el usuario actual."""
+    from functools import wraps
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        gym = get_gimnasio_actual(request)
+        if not gym:
+            messages.warning(request, 'Seleccioná un gimnasio primero.')
+            return redirect('index')
+        caja = get_caja_abierta(gym)
+        if not caja:
+            messages.warning(request, 'Debés abrir la caja antes de realizar ventas o movimientos de dinero. Andá a Caja Diaria.')
+            return redirect('balance_diario')
+        if not usuario_puede_operar_caja(request, caja):
+            dueno = caja.usuario_apertura.usuario if caja.usuario_apertura else 'otro usuario'
+            messages.error(
+                request,
+                f'Solo {dueno} puede vender y registrar movimientos mientras su caja esté abierta.'
+            )
+            return redirect('balance_diario')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
+@login_required
+def set_gimnasio_actual(request, gimnasio_id):
+    """Establece el gimnasio actual en sesión y redirige a index."""
+    gym = get_object_or_404(Gimnasio, pk=gimnasio_id)
+    request.session['gimnasio_actual_id'] = gym.id
+    next_url = request.GET.get('next', reverse('index'))
+    return redirect(next_url)
+
+
 # Create your views here.
 
 @never_cache
@@ -30,15 +135,19 @@ def login_view(request):
         if user is not None:
             login(request, user)
 
-            # Establecer el tipo de usuario en la sesión
+            # Establecer el tipo de usuario en la sesión: super_usuario, admin, empleado
             if user.is_superuser:
-                request.session['tipo_usuario'] = 'admin'  # <---- AQUI
+                request.session['tipo_usuario'] = 'super_usuario'
             else:
                 try:
                     usuario_modelo = Usuario.objects.get(usuario=username)
                     request.session['tipo_usuario'] = usuario_modelo.tipo_usuario.tipousuario
+                    # Asignar gimnasio actual: si tiene gyms asignados, llevar al primero
+                    primero = UsuarioGimnasio.objects.filter(usuario=usuario_modelo).select_related('gimnasio').first()
+                    if primero:
+                        request.session['gimnasio_actual_id'] = primero.gimnasio_id
                 except Usuario.DoesNotExist:
-                    request.session['tipo_usuario'] = 'miembro' #Valor por defecto si no existe en la tabla Usuario
+                    request.session['tipo_usuario'] = 'miembro'  # Valor por defecto si no existe en la tabla Usuario
 
             # Obtener el parámetro 'next' de la URL
             next_url = request.GET.get('next')
@@ -64,7 +173,7 @@ def index(request):
     tipo_usuario_valor = None # Inicializar la variable
 
     if request.user.is_superuser:
-        tipo_usuario_valor = 'admin'
+        tipo_usuario_valor = 'super_usuario'
     elif request.user.groups.filter(name='empleado').exists():
         tipo_usuario_valor = 'empleado'
     else:
@@ -75,77 +184,169 @@ def index(request):
         except Usuario.DoesNotExist:
             tipo_usuario_valor = 'miembro'
 
-    # ESTABLECER LA VARIABLE DE SESSION, AHORA ES EL LUGAR CORRECTO
     request.session['tipo_usuario'] = tipo_usuario_valor
+    gym = get_gimnasio_actual(request)
 
-    # Obtener los últimos socios, cuotas y ventas
-    ultimos_socios = Socio.objects.order_by('-id')[:2]
-    ultimas_cuotas = Cuota.objects.order_by('-id')[:2]
-    ultimas_ventas = Venta.objects.order_by('-id')[:2]
+    if tipo_usuario_valor == 'empleado':
+        socios = Socio.objects.filter(gimnasio=gym).order_by('apellido', 'nombre') if gym else []
+        hoy = date.today()
+        proximos_vencer = []
+        for s in socios:
+            fv = s.fecha_vencimiento
+            if fv:
+                dias = (fv - hoy).days
+                if dias <= 5:
+                    if dias < 0:
+                        alerta = 'vencido'
+                    elif dias <= 1:
+                        alerta = 'rojo'
+                    else:
+                        alerta = 'amarillo'
+                    proximos_vencer.append({'socio': s, 'dias': dias, 'alerta': alerta})
+        proximos_vencer.sort(key=lambda x: x['dias'])
+        return render(request, 'index_empleado.html', {
+            'usuario': usuario, 'socios': socios, 'proximos_vencer': proximos_vencer, 'gimnasio_actual': gym,
+        })
+
+    gimnasios = list(gimnasio_context(request).get('gimnasios_disponibles', []))
+    if not gimnasios:
+        gimnasios = list(Gimnasio.objects.all().order_by('nombre', 'direccion'))
 
     return render(request, 'index.html', {
         'usuario': usuario,
         'tipo_usuario': tipo_usuario_valor,
-        'ultimos_socios': ultimos_socios,
-        'ultimas_cuotas': ultimas_cuotas,
-        'ultimas_ventas': ultimas_ventas
+        'gimnasios': gimnasios
     })
 
 
 ##SOCIOS
 
+@login_required
 def lista_socios(request):
-    socios = Socio.objects.all()
-    return render(request, 'lista_socios.html', {'socios': socios})
+    gym = get_gimnasio_actual(request)
+    q_buscar = (request.GET.get('q') or '').strip()
+    if gym:
+        ultima_cuota_subq = Cuota.objects.filter(socio=OuterRef('pk')).order_by('-fecha_inicio')
+        socios = Socio.objects.filter(gimnasio=gym).select_related('tipo_mensualidad').annotate(
+            tiene_cuota=Exists(Cuota.objects.filter(socio=OuterRef('pk'))),
+            fecha_inicio_cuota=Subquery(ultima_cuota_subq.values('fecha_inicio')[:1]),
+        ).order_by('apellido', 'nombre')
+        if q_buscar:
+            q_filtro = Q()
+            for term in q_buscar.split():
+                q_filtro &= (Q(nombre__icontains=term) | Q(apellido__icontains=term) | Q(dni__icontains=term))
+            socios = socios.filter(q_filtro)
+    else:
+        socios = Socio.objects.none()
+    try:
+        nuevo_id = int(request.GET.get('nuevo')) if request.GET.get('nuevo') else None
+    except (ValueError, TypeError):
+        nuevo_id = None
+    return render(request, 'lista_socios.html', {'socios': socios, 'socio_nuevo_id': nuevo_id, 'q_buscar': q_buscar})
 
 
 @login_required
 def crear_socio(request):
-    current_user = None  # Inicializamos current_user como None
-
-    if request.user.username:  # Verificamos si el usuario autenticado tiene username
-        current_user = Usuario.objects.filter(usuario=request.user.username).first()  # obtenemos un objeto usuario o None
-
-    if request.method == 'POST':
-        form = SocioForm(request.POST)
-        if form.is_valid():
-            if current_user:  # Verificamos que current_user tenga un valor
-                nuevo_socio = form.save(commit=False)
-                nuevo_socio.usuario = current_user  # Asignamos el usuario
-                nuevo_socio.save()  # Guardamos el socio (ahora con tipo_mensualidad)
-                return redirect('lista_socios')
-            else:
-                form.add_error(None, 'El usuario actual no está registrado en el sistema.')  # Error si no se encuentra el usuario
+    # Superusuarios no están en Usuario: creamos/obtenemos uno para que puedan crear socios
+    if request.user.is_superuser:
+        admin_tipo = TipoUsuario.objects.filter(tipousuario='admin').first() or TipoUsuario.objects.first()
+        current_user, _ = Usuario.objects.get_or_create(
+            usuario=request.user.username,
+            defaults={'tipo_usuario': admin_tipo, 'contrasena': request.user.password}
+        )
     else:
-        form = SocioForm()
-    return render(request, 'crear_socio.html', {'form': form, 'current_user': current_user})
+        current_user = Usuario.objects.filter(usuario=request.user.username).first()
+    gym = get_gimnasio_actual(request)
+    if not gym:
+        return redirect('gimnasio_lista')
 
-
-def editar_socio(request, pk):
-    """Edita un socio existente."""
-    socio = get_object_or_404(Socio, pk=pk)
     if request.method == 'POST':
-        form = SocioForm(request.POST, instance=socio)
+        form = SocioForm(request.POST, gimnasio=gym)
+        if form.is_valid() and current_user:
+            nuevo_socio = form.save(commit=False)
+            nuevo_socio.usuario = current_user
+            nuevo_socio.gimnasio = gym
+            # No asignar clases ni vencimiento: eso se hace solo cuando PAGA (cobrar_mensualidad)
+            nuevo_socio.clases_restantes = 0
+            nuevo_socio.fecha_vencimiento = None
+            nuevo_socio.save()
+            tm = nuevo_socio.tipo_mensualidad
+            if tm and tm.frecuencia == 'clases' and (tm.clases_incluidas or 0) > 0:
+                messages.info(
+                    request,
+                    f'Socio creado. Al cobrar con «Pagar» se acreditarán {tm.clases_incluidas} clases del plan.'
+                )
+            else:
+                messages.success(request, 'Socio creado. Cobrá la mensualidad con el botón «Pagar» para activar el plan.')
+            return redirect(reverse('lista_socios') + f'?nuevo={nuevo_socio.id}')
+        elif not current_user:
+            form = SocioForm(request.POST, gimnasio=gym)
+            form.add_error(None, 'El usuario actual no está registrado.')
+    else:
+        form = SocioForm(gimnasio=gym)
+    return render(request, 'crear_socio.html', {'form': form, 'current_user': current_user, 'gimnasio_actual': gym})
+
+
+@login_required
+def editar_socio(request, pk):
+    gym = get_gimnasio_actual(request)
+    socio = get_object_or_404(Socio, pk=pk, gimnasio=gym) if gym else get_object_or_404(Socio, pk=pk)
+    if request.method == 'POST':
+        form = SocioForm(request.POST, instance=socio, gimnasio=gym)
         if form.is_valid():
             form.save()
             return redirect('lista_socios')
     else:
-        form = SocioForm(instance=socio)
+        form = SocioForm(instance=socio, gimnasio=gym)
     return render(request, 'editar_socio.html', {'form': form, 'socio': socio})
 
+@login_required
 def eliminar_socio(request, pk):
-    """Elimina un socio existente."""
-    socio = get_object_or_404(Socio, pk=pk)
+    gym = get_gimnasio_actual(request)
+    socio = get_object_or_404(Socio, pk=pk, gimnasio=gym) if gym else get_object_or_404(Socio, pk=pk)
     
     if request.method == 'POST':
         socio.delete()
         return redirect('lista_socios')
     return render(request, 'eliminar_socio.html', {'socio': socio})
 
+@login_required
 def detalle_socio(request, pk):
-    socio = get_object_or_404(Socio, pk=pk)
+    gym = get_gimnasio_actual(request)
+    socio = get_object_or_404(Socio, pk=pk, gimnasio=gym) if gym else get_object_or_404(Socio, pk=pk)
     ultima_cuota = Cuota.objects.filter(socio=socio).order_by('-id').first()
     return render(request, 'detalle_socio.html', {'socio': socio, 'ultima_cuota': ultima_cuota})
+
+
+@login_required
+def enviar_mensaje_socio(request, pk):
+    """
+    Envía un mensaje a un socio por SMS, WhatsApp o Email usando Twilio/utilidades de correo.
+    """
+    gym = get_gimnasio_actual(request)
+    socio = get_object_or_404(Socio, pk=pk, gimnasio=gym) if gym else get_object_or_404(Socio, pk=pk)
+
+    if request.method == "POST":
+        canal = request.POST.get("canal")
+        mensaje = (request.POST.get("mensaje") or "").strip()
+        email_destino = (request.POST.get("email") or "").strip()
+        ok = False
+
+        if mensaje:
+            if canal == "sms":
+                ok = send_sms(socio.celular or "", mensaje)
+            elif canal == "whatsapp":
+                ok = send_whatsapp(socio.celular or "", mensaje)
+            elif canal == "email":
+                ok = send_email(email_destino, "Mensaje del gimnasio", mensaje)
+
+        if ok:
+            messages.success(request, "Mensaje enviado correctamente.")
+        else:
+            messages.error(request, "No se pudo enviar el mensaje. Verificá el canal, número/email y la configuración de Twilio/Email.")
+        return redirect("detalle_socio", pk=socio.pk)
+
+    return render(request, "enviar_mensaje_socio.html", {"socio": socio})
 
 ## TIPO DE USUARIOS
 
@@ -185,23 +386,36 @@ def tipo_usuario_delete(request, pk):
 
 ##USUARIOS
 
+@login_required
 def usuario_create(request):
     if request.method == 'POST':
         form = UsuarioForm(request.POST)
         if form.is_valid():
-            form.save() #Formulario seguro
+            form.save()
             return redirect('usuario_list')
     else:
         form = UsuarioForm()
     return render(request, 'usuario_form.html', {'form': form})
 
+@login_required
 def usuario_list(request):
-    usuarios = Usuario.objects.all()
-    return render(request, 'usuario_list.html', {'usuarios': usuarios})
+    # Super usuarios (Django): se muestran pero no son editables/eliminables
+    superusers = list(User.objects.filter(is_superuser=True).order_by('username'))
+    superuser_usernames = {u.username for u in superusers}
+    usuarios = list(Usuario.objects.exclude(usuario__in=superuser_usernames)
+        .select_related('tipo_usuario').prefetch_related('gimnasios_asignados__gimnasio').order_by('usuario'))
+    return render(request, 'usuario_list.html', {
+        'usuarios': usuarios,
+        'superusers': superusers,
+    })
 
 
+@login_required
 def usuario_update(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
+    if User.objects.filter(username=usuario.usuario, is_superuser=True).exists():
+        messages.error(request, 'No se puede editar la cuenta super usuario.')
+        return redirect('usuario_list')
     if request.method == 'POST':
         form = UsuarioForm(request.POST, instance=usuario)
         if form.is_valid():
@@ -211,8 +425,12 @@ def usuario_update(request, pk):
         form = UsuarioForm(instance=usuario)
     return render(request, 'usuario_form.html', {'form': form})
 
+@login_required
 def usuario_delete(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
+    if User.objects.filter(username=usuario.usuario, is_superuser=True).exists():
+        messages.error(request, 'No se puede eliminar la cuenta super usuario.')
+        return redirect('usuario_list')
     try:
         user = User.objects.get(username=usuario.usuario)
     except User.DoesNotExist:
@@ -272,15 +490,19 @@ def password_reset_confirm(request, pk):
 
 ## gym
 
+@login_required
 def gimnasio_lista(request):
     gimnasios = Gimnasio.objects.all()
     return render(request, 'gimnasio_lista.html', {'gimnasios': gimnasios})
 
+@login_required
 def gimnasio_crear(request):
     if request.method == 'POST':
         form = GimnasioForm(request.POST)
         if form.is_valid():
-            form.save()
+            gym = form.save()
+            for u in Usuario.objects.all():
+                UsuarioGimnasio.objects.get_or_create(usuario=u, gimnasio=gym)
             return redirect('gimnasio_lista')
     else:
         form = GimnasioForm()
@@ -311,50 +533,158 @@ def gimnasio_detalle(request, pk):
 
 
 ##tipo de mensualidad 
+@login_required
 def lista_tipos_mensualidad(request):
-    tipos = TipoMensualidad.objects.all()
-    return render(request, 'lista_tipos_mensualidad.html', {'tipos': tipos})
+    gym = get_gimnasio_actual(request)
+    categorias = CategoriaMensualidad.objects.filter(gimnasio=gym).order_by('nombre') if gym else CategoriaMensualidad.objects.none()
+    return render(request, 'lista_tipos_mensualidad.html', {'categorias': categorias})
 
-def crear_tipo_mensualidad(request):
+@login_required
+def crear_plan_mensualidad(request):
+    gym = get_gimnasio_actual(request)
+    if not gym:
+        messages.error(request, 'Seleccione un gimnasio.')
+        return redirect('index')
     if request.method == 'POST':
-        form = TipoMensualidadForm(request.POST)
+        form = CrearPlanMensualidadForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect('lista_tipos_mensualidad') # Redirige a la vista lista_tipos_mensualidad
+            cat = CategoriaMensualidad.objects.create(
+                nombre=form.cleaned_data['nombre'].strip(),
+                gimnasio=gym
+            )
+            messages.success(request, f'Plan "{cat.nombre}" creado. Ahora agregá las opciones (libre, 12 clases, etc.).')
+            return redirect('detalle_plan_mensualidad', categoria_id=cat.pk)
     else:
-        form = TipoMensualidadForm()
-    return render(request, 'crear_tipo_mensualidad.html', {'form': form})
+        form = CrearPlanMensualidadForm()
+    return render(request, 'crear_plan_mensualidad.html', {'form': form})
 
+@login_required
+def detalle_plan_mensualidad(request, categoria_id):
+    cat = get_object_or_404(CategoriaMensualidad, pk=categoria_id)
+    opciones = TipoMensualidad.objects.filter(categoria=cat).order_by('tipo')
+    return render(request, 'detalle_plan_mensualidad.html', {'categoria': cat, 'opciones': opciones})
+
+@login_required
+def crear_opcion_mensualidad(request, categoria_id):
+    cat = get_object_or_404(CategoriaMensualidad, pk=categoria_id)
+    if request.method == 'POST':
+        form = CrearOpcionMensualidadForm(request.POST)
+        if form.is_valid():
+            nombre = form.cleaned_data['nombre'].strip()
+            precio = form.cleaned_data['precio']
+            clases = form.cleaned_data.get('clases_incluidas')
+            frecuencia = 'clases' if (clases is not None and clases > 0) else 'pase_libre'
+            TipoMensualidad.objects.create(
+                categoria=cat,
+                tipo=nombre,
+                frecuencia=frecuencia,
+                precio=precio,
+                clases_incluidas=clases if clases else None
+            )
+            messages.success(request, f'Opción "{nombre}" agregada.')
+            return redirect('detalle_plan_mensualidad', categoria_id=cat.pk)
+    else:
+        form = CrearOpcionMensualidadForm()
+    return render(request, 'crear_opcion_mensualidad.html', {'form': form, 'categoria': cat})
+
+@login_required
 def editar_tipo_mensualidad(request, pk):
     tipo = get_object_or_404(TipoMensualidad, pk=pk)
     if request.method == 'POST':
         form = TipoMensualidadForm(request.POST, instance=tipo)
         if form.is_valid():
-            form.save()
-            return redirect('lista_tipos_mensualidad') # Redirige a la vista lista_tipos_mensualidad
+            obj = form.save(commit=False)
+            cls = obj.clases_incluidas
+            obj.frecuencia = 'clases' if (cls is not None and cls > 0) else 'pase_libre'
+            obj.save()
+            return redirect('detalle_plan_mensualidad', categoria_id=tipo.categoria_id)
     else:
         form = TipoMensualidadForm(instance=tipo)
     return render(request, 'editar_tipo_mensualidad.html', {'form': form, 'tipo': tipo})
 
 def eliminar_tipo_mensualidad(request, pk):
     tipo = get_object_or_404(TipoMensualidad, pk=pk)
+    cat_id = tipo.categoria_id
     if request.method == 'POST':
         tipo.delete()
-        return redirect('lista_tipos_mensualidad') # Redirige a la vista lista_tipos_mensualidad
+        return redirect('detalle_plan_mensualidad', categoria_id=cat_id)
     return render(request, 'eliminar_tipo_mensualidad.html', {'tipo': tipo})
 
 
 ##cuotas
 
 @login_required
+@requiere_caja_abierta
+def cobrar_mensualidad(request, socio_id):
+    """Cobrar o renovar mensualidad. Permite múltiples formas de pago."""
+    gym = get_gimnasio_actual(request)
+    caja = get_caja_abierta(gym) if gym else None
+    socio = get_object_or_404(Socio, pk=socio_id, gimnasio=gym) if gym else get_object_or_404(Socio, pk=socio_id)
+    if not socio.tipo_mensualidad:
+        messages.warning(request, 'El socio no tiene mensualidad asignada. Asigná una primero.')
+        return redirect(reverse('asignar_mensualidad') + f'?socio={socio_id}')
+    precio = float(socio.tipo_mensualidad.precio)
+    tm = socio.tipo_mensualidad
+    es_por_clases = tm.frecuencia == 'clases' and (tm.clases_incluidas or 0) > 0
+    clases_a_dar = tm.clases_incluidas if es_por_clases else 0
+
+    # ¿Es renovación? (ya tiene cuota previa)
+    tiene_cuota_previa = Cuota.objects.filter(socio=socio).exists()
+    es_renovacion = tiene_cuota_previa
+
+    if request.method == 'POST':
+        form = CobrarMensualidadForm(request.POST, precio_total=precio)
+        if form.is_valid():
+            ef = float(form.cleaned_data.get('efectivo') or 0)
+            tr = float(form.cleaned_data.get('transferencia') or 0)
+            tc = float(form.cleaned_data.get('tarjeta_credito') or 0)
+            nombre_titular = (form.cleaned_data.get('nombre_titular') or '').strip() or None
+            fecha_cobro = date.today()
+
+            cuota = Cuota.objects.create(
+                socio=socio, tipo_mensualidad=tm, precio=precio, gimnasio=socio.gimnasio,
+                fecha_inicio=fecha_cobro, nombre_titular_transferencia=nombre_titular,
+                efectivo=ef, transferencia=tr, tarjeta_credito=tc, caja=caja,
+            )
+
+            socio.fecha_vencimiento = fecha_cobro + timedelta(days=30)
+            if es_por_clases:
+                socio.clases_restantes = clases_a_dar
+            socio.save()
+
+            ingresos.objects.create(
+                descripcion=f"Mensualidad {socio.nombre} {socio.apellido}",
+                monto=precio, tipo_ingreso='Mensualidad', fecha=fecha_cobro, gimnasio=socio.gimnasio, caja=caja,
+            )
+
+            msg = 'Renovación registrada.' if es_renovacion else 'Pago registrado.'
+            if es_por_clases:
+                msg += f' Quedó con {clases_a_dar} clases del plan.'
+            else:
+                msg += ' Se agregó 1 mes de servicio.'
+            messages.success(request, msg)
+            return redirect('lista_socios')
+    else:
+        form = CobrarMensualidadForm(precio_total=precio)
+
+    fecha_venc_nueva = date.today() + timedelta(days=30)
+    return render(request, 'cobrar_mensualidad.html', {
+        'socio': socio, 'form': form, 'precio': precio, 'fecha_hoy': date.today(),
+        'es_renovacion': es_renovacion, 'es_por_clases': es_por_clases,
+        'clases_a_dar': clases_a_dar, 'fecha_venc_nueva': fecha_venc_nueva,
+    })
+
+
+@login_required
 def asignar_mensualidad(request):
+    gym = get_gimnasio_actual(request)
     socio_id = request.GET.get('socio')
     socio = None
     initial_data = {}
     mensualidad_actual = None
 
-    if socio_id:
-        socio = get_object_or_404(Socio, id=socio_id)
+    if socio_id and gym:
+        socio = get_object_or_404(Socio, id=socio_id, gimnasio=gym)
         initial_data['socio'] = f"{socio.nombre} {socio.apellido}"
         initial_data['socio_id'] = socio.id
 
@@ -363,7 +693,7 @@ def asignar_mensualidad(request):
             mensualidad_actual = socio.tipo_mensualidad
             
     if request.method == 'POST':
-        form = AsignarMensualidadForm(request.POST, initial=initial_data)
+        form = AsignarMensualidadForm(request.POST, initial=initial_data, initial_socio=socio, initial_mensualidad=mensualidad_actual, gimnasio=gym)
         if form.is_valid():
             socio_id = form.initial.get('socio_id')
             socio = Socio.objects.get(pk=socio_id)
@@ -420,14 +750,21 @@ def asignar_mensualidad(request):
 
             return redirect('lista_cuotas')
     else:
-        form = AsignarMensualidadForm(initial=initial_data)
+        form = AsignarMensualidadForm(initial=initial_data, initial_socio=socio, initial_mensualidad=mensualidad_actual, gimnasio=gym)
 
-    return render(request, 'asignar_mensualidad.html', {'form': form, 'socio_id': socio_id})
+    initial_tipo_id = mensualidad_actual.id if mensualidad_actual else None
+    initial_categoria_id = mensualidad_actual.categoria_id if mensualidad_actual and mensualidad_actual.categoria_id else None
+    return render(request, 'asignar_mensualidad.html', {
+        'form': form, 'socio_id': socio_id,
+        'initial_tipo_id': initial_tipo_id, 'initial_categoria_id': initial_categoria_id,
+        'gimnasio_actual': gym
+    })
 
 
 @login_required
 def lista_cuotas(request):
-    socios = Socio.objects.all()
+    gym = get_gimnasio_actual(request)
+    socios = Socio.objects.filter(gimnasio=gym) if gym else Socio.objects.none()
     cuotas_por_socio = []
     for socio in socios:
        try:
@@ -470,12 +807,9 @@ def renovar_mensualidad(request):
                 nueva_cuota.tarjeta_credito = cuota.tarjeta_credito
             nueva_cuota.save()
             
-            # Sumar 12 clases SI Y SOLO SI el tipo de mensualidad es "12 clases"
-            # Se obtiene el id del tipo de mensualidad para comparar
-            tipo_mensualidad_12_clases = TipoMensualidad.objects.get(tipo="12 clases")
-            if cuota.tipo_mensualidad and cuota.tipo_mensualidad.id == tipo_mensualidad_12_clases.id:
-                socio.clases_restantes = F('clases_restantes') + 12
-                socio.save()
+            if cuota.tipo_mensualidad and cuota.tipo_mensualidad.frecuencia == 'clases' and cuota.tipo_mensualidad.clases_incluidas:
+                socio.clases_restantes = cuota.tipo_mensualidad.clases_incluidas
+                socio.save(update_fields=['clases_restantes'])
                 
             # Registrar el ingreso
             ingresos.objects.create(
@@ -519,10 +853,9 @@ def renovar_mensualidad_manual(request):
               nueva_cuota.tarjeta_credito = cuota.tarjeta_credito
              nueva_cuota.save()
              
-             # Sumar 12 clases si es tipo_mensualidad "12 clases"
-             if cuota.tipo_mensualidad and cuota.tipo_mensualidad.tipo == "12 clases":
-                socio.clases_restantes += 12
-                socio.save()
+             if cuota.tipo_mensualidad and cuota.tipo_mensualidad.frecuencia == 'clases' and cuota.tipo_mensualidad.clases_incluidas:
+                socio.clases_restantes = cuota.tipo_mensualidad.clases_incluidas
+                socio.save(update_fields=['clases_restantes'])
              
              cuota.delete()
            return redirect(reverse('asignar_mensualidad') + f'?socio={socio_id}&cuota={nueva_cuota.id}')
@@ -534,28 +867,82 @@ def renovar_mensualidad_manual(request):
 
 ##PRODUCTOS
 
+@login_required
 def producto_list(request):
-    productos = Producto.objects.all()
-    return render(request, 'producto_list.html', {'productos': productos})
+    gym = get_gimnasio_actual(request)
+    q_buscar = (request.GET.get('q') or '').strip()
+    if gym:
+        productos = Producto.objects.filter(gimnasio=gym).order_by('descripcion')
+        if q_buscar:
+            productos = productos.filter(descripcion__icontains=q_buscar)
+    else:
+        productos = Producto.objects.none()
+    return render(request, 'producto_list.html', {'productos': productos, 'q_buscar': q_buscar})
 
+@login_required
 def producto_crear(request):
+    gym = get_gimnasio_actual(request)
+    if not gym:
+        return redirect('gimnasio_lista')
     if request.method == 'POST':
         form = ProductoForm(request.POST)
         if form.is_valid():
-            form.save()
+            prod = form.save(commit=False)
+            prod.gimnasio = gym
+            prod.save()
             return redirect('producto_list')
     else:
-        form = ProductoForm()
+        form = ProductoForm(initial={'gimnasio': gym})
+        form.fields['gimnasio'].queryset = Gimnasio.objects.filter(pk=gym.pk)
+        form.fields['gimnasio'].widget = django_forms.HiddenInput()
     return render(request, 'producto_form.html', {'form': form})
+
+@login_required
 def producto_editar(request, pk):
-    producto = get_object_or_404(Producto, pk=pk)
+    gym = get_gimnasio_actual(request)
+    producto = get_object_or_404(Producto, pk=pk, gimnasio=gym) if gym else get_object_or_404(Producto, pk=pk)
     if request.method == 'POST':
-        form = ProductoForm(request.POST, instance=producto)
-        if form.is_valid():
-            form.save()
+        # El template de edición no envía cantidad/precio del modelo; los armamos acá.
+        agregar_raw = (request.POST.get('agregar_cantidad') or '0').strip()
+        nuevo_precio_raw = (request.POST.get('nuevo_precio') or '').strip().replace(',', '.')
+
+        errores = []
+        try:
+            agregar_cantidad = int(agregar_raw) if agregar_raw != '' else 0
+            if agregar_cantidad < 0:
+                raise ValueError
+        except ValueError:
+            agregar_cantidad = None
+            errores.append('La cantidad a agregar debe ser un número entero mayor o igual a 0.')
+
+        nuevo_precio = None
+        if nuevo_precio_raw:
+            try:
+                nuevo_precio = float(nuevo_precio_raw)
+                if nuevo_precio < 0:
+                    raise ValueError
+            except ValueError:
+                errores.append('El nuevo precio debe ser un número mayor o igual a 0.')
+
+        post = request.POST.copy()
+        post['cantidad'] = str((producto.cantidad or 0) + (agregar_cantidad or 0))
+        post['precio'] = str(nuevo_precio if nuevo_precio is not None else (producto.precio or 0))
+
+        form = ProductoForm(post, instance=producto)
+        form.fields['gimnasio'].required = False
+        for msg in errores:
+            form.add_error(None, msg)
+
+        if not errores and form.is_valid():
+            prod = form.save(commit=False)
+            prod.gimnasio = producto.gimnasio
+            prod.save()
+            messages.success(request, 'Producto actualizado correctamente.')
             return redirect('producto_list')
     else:
         form = ProductoForm(instance=producto)
+    form.fields['gimnasio'].widget = django_forms.HiddenInput()
+    form.fields['gimnasio'].queryset = Gimnasio.objects.filter(pk=producto.gimnasio_id)
     return render(request, 'producto_form.html', {'form': form})
 
 def producto_eliminar(request, pk):
@@ -566,19 +953,212 @@ def producto_eliminar(request, pk):
     return render(request, 'producto_confirmar_eliminar.html', {'producto': producto})
 
 
+## PROFESORES
+
+@login_required
+def profesor_list(request):
+    """Lista de profesores del gimnasio actual."""
+    gym = get_gimnasio_actual(request)
+    q_buscar = (request.GET.get('q') or '').strip()
+    if gym:
+        profesores = Profesor.objects.filter(gimnasio=gym).order_by('apellido', 'nombre')
+        if q_buscar:
+            from django.db.models import Q
+            profesores = profesores.filter(
+                Q(nombre__icontains=q_buscar) | Q(apellido__icontains=q_buscar)
+            )
+    else:
+        profesores = Profesor.objects.none()
+    return render(request, 'profesor_list.html', {'profesores': profesores, 'q_buscar': q_buscar})
+
+
+@login_required
+def profesor_crear(request):
+    gym = get_gimnasio_actual(request)
+    if not gym:
+        messages.warning(request, 'Seleccioná un gimnasio primero.')
+        return redirect('index')
+    if request.method == 'POST':
+        form = ProfesorForm(request.POST)
+        if form.is_valid():
+            prof = form.save(commit=False)
+            prof.gimnasio = gym
+            prof.save()
+            messages.success(request, f'Profesor {prof.nombre} {prof.apellido} creado.')
+            return redirect('profesor_list')
+    else:
+        form = ProfesorForm()
+    return render(request, 'profesor_form.html', {'form': form, 'accion': 'Crear'})
+
+
+@login_required
+def profesor_editar(request, pk):
+    gym = get_gimnasio_actual(request)
+    profesor = get_object_or_404(Profesor, pk=pk, gimnasio=gym) if gym else get_object_or_404(Profesor, pk=pk)
+    if request.method == 'POST':
+        form = ProfesorForm(request.POST, instance=profesor)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Profesor actualizado.')
+            return redirect('profesor_detalle', pk=profesor.pk)
+    else:
+        form = ProfesorForm(instance=profesor)
+    return render(request, 'profesor_form.html', {'form': form, 'profesor': profesor, 'accion': 'Editar'})
+
+
+@login_required
+def profesor_detalle(request, pk):
+    """Detalle del profesor: productos vendidos, adelantos, pagos, calculador. Maneja adelanto inline y pago."""
+    gym = get_gimnasio_actual(request)
+    profesor = get_object_or_404(Profesor, pk=pk, gimnasio=gym) if gym else get_object_or_404(Profesor, pk=pk)
+    form_adel = AdelantoForm(initial={'fecha': date.today()})
+    form_pago = PagoProfesorForm()
+
+    if request.method == 'POST':
+        accion = request.POST.get('accion')
+        if accion == 'adelanto':
+            form_adel = AdelantoForm(request.POST)
+            if form_adel.is_valid():
+                adel = form_adel.save(commit=False)
+                adel.profesor = profesor
+                adel.gimnasio = profesor.gimnasio
+                adel.save()
+                messages.success(request, f'Adelanto de ${adel.monto:.2f} registrado.')
+                return redirect('profesor_detalle', pk=profesor.pk)
+        elif accion == 'pagar':
+            form_pago = PagoProfesorForm(request.POST)
+            if form_pago.is_valid():
+                pago = pago_profesor_guardar(request, profesor, form_pago.cleaned_data)
+                if pago:
+                    messages.success(request, f'Pago de ${pago.monto:.2f} registrado. Ingresó a caja.')
+                    return redirect('profesor_detalle', pk=profesor.pk)
+
+    ventas = Venta.objects.filter(profesor=profesor).select_related('producto').order_by('-fecha', '-id')
+    adelantos = Adelanto.objects.filter(profesor=profesor).order_by('-fecha', '-id')
+    pagos = PagoProfesor.objects.filter(profesor=profesor).order_by('-fecha', '-id')
+    total_ventas_profesor = sum(v.monto_total for v in ventas)
+    total_adelantos = adelantos.aggregate(s=Sum('monto'))['s'] or 0
+    total_pagos = pagos.aggregate(s=Sum('monto'))['s'] or 0
+
+    return render(request, 'profesor_detalle.html', {
+        'profesor': profesor,
+        'ventas': ventas,
+        'adelantos': adelantos,
+        'pagos': pagos,
+        'total_ventas_profesor': total_ventas_profesor,
+        'total_adelantos': total_adelantos,
+        'total_pagos': total_pagos,
+        'form_adelanto': form_adel,
+        'form_pago': form_pago,
+        'caja_abierta': get_caja_abierta(gym) if gym else None,
+    })
+
+
+def pago_profesor_guardar(request, profesor, data):
+    """Registra el pago del profesor y crea el ingreso. Requiere caja abierta."""
+    gym = profesor.gimnasio
+    caja = get_caja_abierta(gym) if gym else None
+    if not caja:
+        messages.warning(request, 'Debés abrir la caja antes de registrar pagos.')
+        return None
+    if not usuario_puede_operar_caja(request, caja):
+        dueno = caja.usuario_apertura.usuario if caja.usuario_apertura else 'otro usuario'
+        messages.error(request, f'Solo {dueno} puede registrar pagos mientras su caja esté abierta.')
+        return None
+    monto = float(data['monto'])
+    metodo = data.get('metodo_pago', 'efectivo')
+    ef = monto if metodo == 'efectivo' else 0
+    tr = monto if metodo == 'transferencia' else 0
+    tc = monto if metodo == 'tarjeta_credito' else 0
+    titular = (data.get('nombre_titular') or '').strip() or None
+
+    ventas_pendientes = Venta.objects.filter(profesor=profesor)
+    adelantos_pendientes = Adelanto.objects.filter(profesor=profesor)
+    total_productos = sum(v.monto_total for v in ventas_pendientes)
+    total_adelantos = adelantos_pendientes.aggregate(s=Sum('monto'))['s'] or 0
+
+    pago = PagoProfesor.objects.create(
+        profesor=profesor,
+        monto=monto,
+        efectivo=ef, transferencia=tr, tarjeta_credito=tc,
+        nombre_titular=titular,
+        descripcion=f'Pago de {profesor.nombre} {profesor.apellido}',
+        fecha=date.today(),
+        gimnasio=gym,
+        caja=caja,
+        adelantos_liquidados=total_adelantos,
+        productos_liquidados=total_productos,
+    )
+    ventas_pendientes.update(profesor=None, caja=caja)
+    adelantos_pendientes.delete()
+
+    egreso.objects.create(
+        descripcion=f'Pago de sueldo a {profesor.nombre} {profesor.apellido}',
+        monto=monto,
+        tipo_ingreso='Pago profesor',
+        fecha=date.today(),
+        gimnasio=gym,
+        caja=caja,
+    )
+    return pago
+
+
+@login_required
+def adelanto_crear(request, profesor_id):
+    """Redirige a profesor_detalle (adelanto ahora es inline)."""
+    return redirect('profesor_detalle', pk=profesor_id)
+
+
+@login_required
+def pago_profesor_detalle(request, pk):
+    """Detalle de un pago registrado al profesor: productos, adelantos y el pago."""
+    gym = get_gimnasio_actual(request)
+    pago = get_object_or_404(PagoProfesor, pk=pk)
+    if gym and pago.gimnasio_id != gym.id:
+        return redirect('profesor_detalle', pk=pago.profesor_id)
+    profesor = pago.profesor
+    return render(request, 'pago_profesor_detalle.html', {
+        'pago': pago,
+        'profesor': profesor,
+        'total_ventas': pago.productos_liquidados,
+        'total_adelantos': pago.adelantos_liquidados,
+    })
+
+
 ##venta
 
 @login_required
 def venta_list(request):
-    ventas = Venta.objects.all()
-    return render(request, 'venta_list.html', {'ventas': ventas})
+    gym = get_gimnasio_actual(request)
+    q_buscar = (request.GET.get('q') or '').strip()
+    filtro_profesor = request.GET.get('profesor')
+    if gym:
+        ventas = Venta.objects.filter(gimnasio=gym).select_related('producto', 'usuario', 'profesor').order_by('-fecha', '-id')
+        if q_buscar:
+            ventas = ventas.filter(producto__descripcion__icontains=q_buscar)
+        if filtro_profesor:
+            ventas = ventas.filter(profesor_id=filtro_profesor)
+    else:
+        ventas = Venta.objects.none()
+    profesores = Profesor.objects.filter(gimnasio=gym, activo=True).order_by('apellido', 'nombre') if gym else []
+    caja = get_caja_abierta(gym) if gym else None
+    return render(request, 'venta_list.html', {
+        'ventas': ventas, 'q_buscar': q_buscar,
+        'profesores': profesores, 'filtro_profesor': filtro_profesor,
+        'puede_operar_caja': usuario_puede_operar_caja(request, caja),
+        'caja_abierta': caja,
+    })
 
 @login_required
+@requiere_caja_abierta
 def venta_crear(request):
+    gym = get_gimnasio_actual(request)
+    caja = get_caja_abierta(gym) if gym else None
     if request.method == 'POST':
-        form = VentaForm(request.POST)
+        form = VentaForm(request.POST, gimnasio=gym)
         if form.is_valid():
             venta = form.save(commit=False)
+            venta.profesor = form.cleaned_data.get('profesor')
             # Obtenemos el usuario de Django logueado
             django_user = request.user
             # Obtenemos nuestro usuario personalizado con el mismo nombre de usuario
@@ -586,20 +1166,24 @@ def venta_crear(request):
                 usuario_personalizado = Usuario.objects.get(usuario=django_user.username)
                 venta.usuario = usuario_personalizado
                 venta.gimnasio = form.cleaned_data['producto'].gimnasio
+                venta.fecha = date.today()
+                venta.caja = caja
                 venta.save()  # Guardar venta en la base de datos
                 producto = venta.producto
                 producto.cantidad -= venta.cantidad  # se modifica el stock del producto
                 producto.save()  # se guarda la modificación del stock
 
-                # --- CREACIÓN DEL INGRESO ---
-                monto_ingreso = venta.cantidad * producto.precio  # Calcula el ingreso total de la venta
-                ingreso = ingresos.objects.create(
-                    descripcion=f'Venta de {producto.descripcion}',  # Ejemplo de descripción
-                    monto=monto_ingreso,  # El monto total de la venta
-                    tipo_ingreso='Venta',  # Puede ser 'Venta' o lo que corresponda
-                    fecha=date.today(),  # La fecha actual
-                    gimnasio=venta.gimnasio
-                )
+                # --- CREACIÓN DEL INGRESO solo si NO es venta a profesor (cuenta a cuenta) ---
+                if not venta.profesor:
+                    monto_ingreso = venta.cantidad * producto.precio
+                    ingresos.objects.create(
+                        descripcion=f'Venta de {producto.descripcion}',
+                        monto=monto_ingreso,
+                        tipo_ingreso='Venta',
+                        fecha=date.today(),
+                        gimnasio=venta.gimnasio,
+                        caja=caja,
+                    )
 
                 return redirect('venta_list')
             except Usuario.DoesNotExist:
@@ -608,7 +1192,15 @@ def venta_crear(request):
                 # Por ejemplo, aquí lo redirigimos a una pantalla de error
                 return render(request, 'error/usuario_no_encontrado.html')  # Redirigir a una plantilla de error.
     else:
-        form = VentaForm()
+        gym = get_gimnasio_actual(request)
+        form = VentaForm(gimnasio=gym)
+        profesor_id = request.GET.get('profesor')
+        if profesor_id and gym:
+            try:
+                prof = Profesor.objects.get(pk=profesor_id, gimnasio=gym)
+                form.initial['profesor'] = prof
+            except Profesor.DoesNotExist:
+                pass
     return render(request, 'venta_form.html', {'form': form})
 
 def producto_precio(request, pk):
@@ -618,13 +1210,17 @@ def producto_precio(request, pk):
 
 ## extras
 
+@login_required
 def extras_list(request):
-    extras_lista = extras.objects.all()
+    gym = get_gimnasio_actual(request)
+    extras_lista = extras.objects.filter(gimnasio=gym) if gym else extras.objects.none()
     return render(request, 'extras_list.html', {'extras_lista': extras_lista})
 
+@login_required
 def extras_create(request):
+    gym = get_gimnasio_actual(request)
     if request.method == 'POST':
-        form = ExtrasForm(request.POST)
+        form = ExtrasForm(request.POST, gimnasio=gym)
         if form.is_valid():
             tipo = form.cleaned_data['tipo']
             descripcion = form.cleaned_data['descripcion']
@@ -689,24 +1285,28 @@ def extras_create(request):
 
 
     else:
-        form = ExtrasForm()
+        form = ExtrasForm(gimnasio=gym)
     return render(request, 'extras_form.html', {'form': form, 'title': 'Crear Extra'})
 
+@login_required
 def extras_update(request, pk):
-    extra = get_object_or_404(extras, pk=pk)
+    gym = get_gimnasio_actual(request)
+    extra = get_object_or_404(extras, pk=pk, gimnasio=gym) if gym else get_object_or_404(extras, pk=pk)
     if request.method == 'POST':
-        form = ExtrasForm(request.POST, instance=extra)
+        form = ExtrasForm(request.POST, instance=extra, gimnasio=gym)
         if form.is_valid():
             form.save()
             messages.success(request, 'Extra actualizado correctamente.')
             return redirect('extras_list')
     else:
-        form = ExtrasForm(instance=extra)
+        form = ExtrasForm(instance=extra, gimnasio=gym)
     return render(request, 'extras_form.html', {'form': form, 'title': 'Editar Extra'})
 
 
+@login_required
 def extras_delete(request, pk):
-    extra = get_object_or_404(extras, pk=pk)
+    gym = get_gimnasio_actual(request)
+    extra = get_object_or_404(extras, pk=pk, gimnasio=gym) if gym else get_object_or_404(extras, pk=pk)
     if request.method == 'POST':
         extra.delete()
         messages.success(request, 'Extra eliminado correctamente.')
@@ -714,62 +1314,307 @@ def extras_delete(request, pk):
     return render(request, 'extras_confirm_delete.html', {'extra': extra})
 
 
+## gastos
 
-## caja diaria 
+@login_required
+def gastos_list(request):
+    gym = get_gimnasio_actual(request)
+    gastos_lista = Gasto.objects.filter(gimnasio=gym).order_by('-fecha', '-id') if gym else Gasto.objects.none()
+    puede_eliminar_gastos = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+    return render(request, 'gastos_list.html', {
+        'gastos_lista': gastos_lista,
+        'puede_eliminar_gastos': puede_eliminar_gastos,
+    })
 
+
+@login_required
+@requiere_caja_abierta
+def gastos_crear(request):
+    gym = get_gimnasio_actual(request)
+    if not gym:
+        messages.error(request, 'Seleccione un gimnasio desde el inicio.')
+        return redirect('index')
+    if request.method == 'POST':
+        form = GastoForm(request.POST)
+        if form.is_valid():
+            Gasto.objects.create(
+                descripcion=form.cleaned_data['descripcion'],
+                monto=form.cleaned_data['monto'],
+                forma_pago=form.cleaned_data['forma_pago'],
+                fecha=date.today(),
+                gimnasio=gym,
+                caja=get_caja_abierta(gym),
+            )
+            messages.success(request, 'Gasto registrado correctamente.')
+            return redirect('gastos_list')
+    else:
+        form = GastoForm()
+    return render(request, 'gastos_form.html', {'form': form, 'fecha_hoy': date.today()})
+
+
+@login_required
+def gastos_eliminar(request, pk):
+    es_admin = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+    if not es_admin:
+        messages.error(request, 'No tenés permisos para eliminar gastos.')
+        return redirect('gastos_list')
+    gym = get_gimnasio_actual(request)
+    gasto = get_object_or_404(Gasto, pk=pk, gimnasio=gym) if gym else get_object_or_404(Gasto, pk=pk)
+    if request.method == 'POST':
+        gasto.delete()
+        messages.success(request, 'Gasto eliminado.')
+        return redirect('gastos_list')
+    return render(request, 'gastos_confirm_delete.html', {'gasto': gasto})
+
+
+## historiales
+
+@login_required
+def historiales_index(request):
+    """Selector de período y gimnasio para historiales."""
+    gym = get_gimnasio_actual(request)
+    gimnasios = list(gimnasios_disponibles(request))
+    context = {
+        'gimnasios': gimnasios,
+        'gimnasio_actual': gym,
+    }
+    return render(request, 'historiales_index.html', context)
+
+
+def gimnasios_disponibles(request):
+    """Devuelve gimnasios disponibles para el usuario."""
+    if request.user.is_superuser:
+        return Gimnasio.objects.all().order_by('nombre', 'direccion')
+    try:
+        usuario = Usuario.objects.get(usuario=request.user.username)
+        return Gimnasio.objects.filter(usuarios_asignados__usuario=usuario).distinct().order_by('nombre', 'direccion')
+    except Usuario.DoesNotExist:
+        return Gimnasio.objects.all().order_by('nombre', 'direccion')
+
+
+@login_required
+def historiales_reporte(request):
+    """Reporte de historiales: ingresos mensualidades, ventas, gastos por forma de pago."""
+    periodo = request.GET.get('periodo', 'diario')  # diario, mensual, anual
+    gimnasio_id = request.GET.get('gimnasio')
+    fecha_str = request.GET.get('fecha', date.today().isoformat())
+    año = request.GET.get('anio', str(date.today().year))
+    mes = request.GET.get('mes', str(date.today().month))
+
+    gimnasios_qs = gimnasios_disponibles(request)
+    gimnasios_lista = list(gimnasios_qs)
+    gimnasio_seleccionado = None
+    if gimnasio_id:
+        gimnasio_seleccionado = next((g for g in gimnasios_lista if str(g.id) == gimnasio_id), None)
+    if not gimnasio_seleccionado and gimnasios_lista:
+        gimnasio_seleccionado = gimnasios_lista[0]
+
+    reportes = []
+    gimnasios_a_revisar = [gimnasio_seleccionado] if gimnasio_seleccionado else gimnasios_lista
+
+    for gym in gimnasios_a_revisar:
+        rep = _construir_reporte(gym, periodo, fecha_str, año, mes)
+        reportes.append(rep)
+
+    context = {
+        'reportes': reportes,
+        'periodo': periodo,
+        'fecha': fecha_str,
+        'anio': año,
+        'mes': mes,
+        'gimnasios': gimnasios_lista,
+        'gimnasio_seleccionado': gimnasio_seleccionado,
+    }
+    return render(request, 'historiales_reporte.html', context)
+
+
+def _construir_reporte(gym, periodo, fecha_str, año, mes):
+    """Construye el dict con datos del reporte para un gimnasio."""
+    from datetime import datetime
+    try:
+        fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        fecha = date.today()
+    año_i = int(año) if año else date.today().year
+    mes_i = int(mes) if mes else date.today().month
+
+    if periodo == 'diario':
+        inicio = fin = fecha
+    elif periodo == 'mensual':
+        inicio = date(año_i, mes_i, 1)
+        if mes_i == 12:
+            fin = date(año_i, 12, 31)
+        else:
+            fin = date(año_i, mes_i + 1, 1) - timedelta(days=1)
+    else:  # anual
+        inicio = date(año_i, 1, 1)
+        fin = date(año_i, 12, 31)
+
+    # Cuotas (mensualidades)
+    cuotas = Cuota.objects.filter(gimnasio=gym, fecha_inicio__gte=inicio, fecha_inicio__lte=fin)
+    mens_ef = cuotas.aggregate(s=Sum('efectivo'))['s'] or 0
+    mens_tr = cuotas.aggregate(s=Sum('transferencia'))['s'] or 0
+    mens_tc = cuotas.aggregate(s=Sum('tarjeta_credito'))['s'] or 0
+    mens_total = mens_ef + mens_tr + mens_tc
+
+    # Ventas
+    ventas = Venta.objects.filter(gimnasio=gym, fecha__gte=inicio, fecha__lte=fin)
+    ven_ef = ventas.aggregate(s=Sum('efectivo'))['s'] or 0
+    ven_tr = ventas.aggregate(s=Sum('transferencia'))['s'] or 0
+    ven_tc = ventas.aggregate(s=Sum('tarjeta_credito'))['s'] or 0
+    ven_total = ven_ef + ven_tr + ven_tc
+
+    # Gastos (Gasto + egreso legacy)
+    gastos = Gasto.objects.filter(gimnasio=gym, fecha__gte=inicio, fecha__lte=fin)
+    gas_ef = gastos.filter(forma_pago='efectivo').aggregate(s=Sum('monto'))['s'] or 0
+    gas_tr = gastos.filter(forma_pago='transferencia').aggregate(s=Sum('monto'))['s'] or 0
+    gas_tc = gastos.filter(forma_pago='tarjeta_credito').aggregate(s=Sum('monto'))['s'] or 0
+    gas_total_g = gas_ef + gas_tr + gas_tc
+
+    egresos = egreso.objects.filter(gimnasio=gym, fecha__gte=inicio, fecha__lte=fin)
+    gas_total_e = egresos.aggregate(s=Sum('monto'))['s'] or 0
+
+    gas_total = gas_total_g + gas_total_e
+
+    total_ingresos = mens_total + ven_total
+    balance = total_ingresos - gas_total
+
+    return {
+        'gym': gym,
+        'periodo': periodo,
+        'inicio': inicio,
+        'fin': fin,
+        'mensualidades': {'efectivo': mens_ef, 'transferencia': mens_tr, 'tarjeta': mens_tc, 'total': mens_total},
+        'ventas': {'efectivo': ven_ef, 'transferencia': ven_tr, 'tarjeta': ven_tc, 'total': ven_total},
+        'gastos': gas_total,
+        'total_ingresos': total_ingresos,
+        'balance': balance,
+    }
+
+
+## caja diaria
+
+@login_required
 def balance_diario(request):
+    gym = get_gimnasio_actual(request)
     if request.method == 'POST':
         form = SeleccionGimnasioForm(request.POST)
         if form.is_valid():
             gimnasio_seleccionado = form.cleaned_data['gimnasio']
             return redirect('mostrar_balance', gimnasio_id=gimnasio_seleccionado.id)
     else:
+        if gym:
+            return redirect('mostrar_balance', gimnasio_id=gym.id)
         form = SeleccionGimnasioForm()
     return render(request, 'seleccionar_gimnasio.html', {'form': form})
 
 
+@login_required
+def caja_abrir(request, gimnasio_id):
+    gym = get_object_or_404(Gimnasio, pk=gimnasio_id)
+    caja_existente = get_caja_abierta(gym)
+    if caja_existente:
+        messages.warning(request, f'Ya hay una caja abierta por {caja_existente.usuario_apertura.usuario}. Solo puede haber una caja abierta a la vez.')
+        return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+    usuario = get_usuario_actual(request)
+    if not usuario:
+        messages.error(request, 'Usuario no encontrado.')
+        return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+    Caja.objects.create(gimnasio=gym, usuario_apertura=usuario)
+    messages.success(request, f'Caja abierta correctamente por {usuario.usuario}.')
+    return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+
+
+@login_required
+def caja_cerrar(request, gimnasio_id):
+    gym = get_object_or_404(Gimnasio, pk=gimnasio_id)
+    caja = get_caja_abierta(gym)
+    if not caja:
+        messages.info(request, 'No hay caja abierta para cerrar.')
+        return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+    usuario = get_usuario_actual(request)
+    es_admin = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+    es_mismo = usuario and caja.usuario_apertura_id == usuario.id
+    if not (es_admin or es_mismo):
+        messages.error(request, 'Solo el empleado que abrió la caja o un administrador puede cerrarla.')
+        return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+    from django.utils import timezone
+    caja.fecha_cierre = timezone.now()
+    ti, te, bal = calcular_totales_caja(caja)
+    caja.total_ingresos = ti
+    caja.total_egresos = te
+    caja.balance = bal
+    caja.save()
+    hoy = date.today()
+    BalanceDiario.objects.update_or_create(
+        gimnasio=gym, fecha=hoy,
+        defaults={'total_ingresos': ti, 'total_egresos': te, 'balance': bal}
+    )
+    messages.success(request, 'Caja cerrada correctamente. Los movimientos quedaron registrados en historiales.')
+    return redirect('mostrar_balance', gimnasio_id=gimnasio_id)
+
+
+@login_required
 def mostrar_balance(request, gimnasio_id):
     try:
+        request.session['gimnasio_actual_id'] = int(gimnasio_id)
         hoy = date.today()
-        ingresos_hoy = ingresos.objects.filter(gimnasio_id=gimnasio_id, fecha=hoy)
-        egresos_hoy = egreso.objects.filter(gimnasio_id=gimnasio_id, fecha=hoy)
+        gimnasio_seleccionado = get_object_or_404(Gimnasio, pk=gimnasio_id)
+        gimnasio_nombre = gimnasio_seleccionado.nombre or gimnasio_seleccionado.direccion
 
-        total_ingresos = sum(ingreso.monto for ingreso in ingresos_hoy if ingreso.monto)
-        total_egresos = sum(egreso.monto for egreso in egresos_hoy if egreso.monto)
+        caja_abierta = get_caja_abierta(gimnasio_seleccionado)
+        movs = movimientos_caja_abierta(caja_abierta)
+        ingresos_hoy = movs['ingresos']
+        egresos_hoy = movs['egresos']
+        gastos_hoy = movs['gastos']
+        cuotas_hoy = movs['cuotas']
+        ventas_hoy = movs['ventas']
+        ventas_profesores_hoy = movs['ventas_profesores']
+        pagos_profesor_hoy = movs['pagos_profesor']
+
+        total_ingresos = sum(i.monto for i in ingresos_hoy if i.monto)
+        total_egresos = sum(e.monto for e in egresos_hoy if e.monto)
+        total_egresos += sum(g.monto for g in gastos_hoy if g.monto)
         balance = total_ingresos - total_egresos
-        
-        # Obtener el gimnasio directamente desde el ID
-        try:
-             gimnasio_seleccionado = Gimnasio.objects.get(id=gimnasio_id)
-             gimnasio_nombre = gimnasio_seleccionado.direccion
-        except Gimnasio.DoesNotExist:
-             gimnasio_seleccionado = None
-             gimnasio_nombre = None
-        
-        # Guardar el balance diario (con `get_or_create` y manejo de update)
-        if gimnasio_seleccionado:
-            balance_diario, created = BalanceDiario.objects.get_or_create(
-                gimnasio=gimnasio_seleccionado,
-                fecha=hoy,
-                defaults={'total_ingresos': total_ingresos,
-                          'total_egresos': total_egresos,
-                          'balance': balance}
-            )
-            if not created:
-                balance_diario.total_ingresos = total_ingresos
-                balance_diario.total_egresos = total_egresos
-                balance_diario.balance = balance
-                balance_diario.save()
+
+        ing_efectivo = (
+            sum((c.efectivo or 0) for c in cuotas_hoy)
+            + sum((v.efectivo or 0) for v in ventas_hoy)
+        )
+        ing_transferencia = (
+            sum((c.transferencia or 0) for c in cuotas_hoy)
+            + sum((v.transferencia or 0) for v in ventas_hoy)
+        )
+        ing_tarjeta = (
+            sum((c.tarjeta_credito or 0) for c in cuotas_hoy)
+            + sum((v.tarjeta_credito or 0) for v in ventas_hoy)
+        )
+
+        usuario = get_usuario_actual(request)
+        es_admin = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+        puede_cerrar = caja_abierta and (es_admin or (usuario and caja_abierta.usuario_apertura_id == usuario.id))
+        puede_operar_caja = usuario_puede_operar_caja(request, caja_abierta)
 
         context = {
             'gimnasio_id': gimnasio_id,
             'gimnasio_nombre': gimnasio_nombre,
             'ingresos': ingresos_hoy,
             'egresos': egresos_hoy,
+            'gastos': gastos_hoy,
+            'cuotas': cuotas_hoy,
+            'ventas': ventas_hoy,
+            'ventas_profesores': ventas_profesores_hoy,
+            'pagos_profesor_hoy': pagos_profesor_hoy,
             'total_ingresos': total_ingresos,
             'total_egresos': total_egresos,
             'balance': balance,
+            'ing_efectivo': ing_efectivo,
+            'ing_transferencia': ing_transferencia,
+            'ing_tarjeta': ing_tarjeta,
             'fecha': hoy,
+            'caja_abierta': caja_abierta,
+            'puede_cerrar': puede_cerrar,
+            'puede_operar_caja': puede_operar_caja,
         }
         return render(request, 'mostrar_balance.html', context)
     except Exception as e:
@@ -778,39 +1623,150 @@ def mostrar_balance(request, gimnasio_id):
 
 
 def historial_balances(request):
+    """Solo admin/super: historial de balances diarios. Empleados no acceden."""
+    es_admin = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+    if not es_admin:
+        return redirect('historial_cajas')
     balances = BalanceDiario.objects.all().order_by('-fecha')
-    
-    # Agrupar balances por gimnasio, mes y año
     grouped_balances = {}
     for balance in balances:
-        key = (balance.gimnasio.direccion, balance.fecha.year, balance.fecha.month)
+        nom_gym = balance.gimnasio.nombre or balance.gimnasio.direccion or f'Gimnasio {balance.gimnasio.id}'
+        key = (balance.gimnasio_id, nom_gym, balance.fecha.year, balance.fecha.month)
         if key not in grouped_balances:
             grouped_balances[key] = []
         grouped_balances[key].append(balance)
-
-    gimnasios_con_historial = [balance.gimnasio for balance in balances]
-    
-    
+    gimnasios_con_historial = list(set(balance.gimnasio for balance in balances))
     all_gimnasios = Gimnasio.objects.all()
     context = {
         'grouped_balances': grouped_balances,
         'gimnasios_con_historial': gimnasios_con_historial,
-        'all_gimnasios' : all_gimnasios,
+        'all_gimnasios': all_gimnasios,
     }
-
     return render(request, 'historial_balances.html', context)
+
+
+@login_required
+def historial_cajas(request):
+    """Admin: cajas agrupadas por empleado (nombre de cuenta). Empleado: solo sus cajas."""
+    es_admin = request.user.is_superuser or (request.session.get('tipo_usuario') == 'admin')
+    usuario = get_usuario_actual(request)
+
+    if es_admin:
+        cajas = Caja.objects.all().select_related('gimnasio', 'usuario_apertura').order_by('-fecha_apertura')
+        cajas_por_empleado = {}
+        for c in cajas:
+            nom = (c.usuario_apertura.usuario if c.usuario_apertura else 'Sin usuario')
+            if nom not in cajas_por_empleado:
+                cajas_por_empleado[nom] = {'empleado': nom, 'cajas': []}
+            cajas_por_empleado[nom]['cajas'].append(c)
+        context = {'es_admin': True, 'cajas_por_empleado': list(cajas_por_empleado.values()), 'mis_cajas': None}
+    else:
+        if not usuario:
+            context = {'es_admin': False, 'cajas_por_empleado': [], 'mis_cajas': []}
+        else:
+            mis_cajas = Caja.objects.filter(usuario_apertura=usuario).select_related('gimnasio').order_by('-fecha_apertura')
+            context = {'es_admin': False, 'cajas_por_empleado': [], 'mis_cajas': mis_cajas}
+    return render(request, 'historial_cajas.html', context)
+
+
+@login_required
+def detalle_caja(request, caja_id):
+    """Detalle de movimientos de una caja (mensualidades, ventas, egresos, gastos)."""
+    caja = get_object_or_404(Caja, pk=caja_id)
+    gym = caja.gimnasio
+    fin = caja.fecha_cierre.date() if caja.fecha_cierre else date.today()
+    inicio = caja.fecha_apertura.date()
+
+    def _por_caja(model, **extra):
+        qs = model.objects.filter(caja=caja, **extra)
+        if qs.exists():
+            return qs
+        return model.objects.filter(gimnasio=gym, caja__isnull=True, **extra)
+
+    cuotas = _por_caja(Cuota, fecha_inicio__gte=inicio, fecha_inicio__lte=fin).select_related('socio', 'tipo_mensualidad').order_by('fecha_inicio')
+    ventas = _por_caja(Venta, fecha__gte=inicio, fecha__lte=fin, profesor__isnull=True).select_related('producto').order_by('fecha')
+    pagos_prof = _por_caja(PagoProfesor, fecha__gte=inicio, fecha__lte=fin).select_related('profesor').order_by('fecha')
+    ing_otros = _por_caja(ingresos, fecha__gte=inicio, fecha__lte=fin).exclude(tipo_ingreso__in=['Mensualidad', 'Venta', 'Pago profesor']).order_by('fecha')
+    egresos_list = _por_caja(egreso, fecha__gte=inicio, fecha__lte=fin).order_by('fecha')
+    gastos_list = _por_caja(Gasto, fecha__gte=inicio, fecha__lte=fin).order_by('fecha')
+
+    if caja.total_ingresos is not None and caja.fecha_cierre:
+        tot_ing = caja.total_ingresos
+        tot_egr = caja.total_egresos or 0
+        balance = caja.balance if caja.balance is not None else tot_ing - tot_egr
+        tot_mens = sum(c.precio or 0 for c in cuotas)
+        tot_ventas = sum(v.monto_total for v in ventas)
+        tot_pagos_prof = sum(p.monto for p in pagos_prof)
+        tot_otros = sum(i.monto or 0 for i in ing_otros)
+    else:
+        tot_mens = sum(c.precio or 0 for c in cuotas)
+        tot_ventas = sum(v.monto_total for v in ventas)
+        tot_pagos_prof = sum(p.monto for p in pagos_prof)
+        tot_otros = sum(i.monto or 0 for i in ing_otros)
+        tot_egr = sum(e.monto or 0 for e in egresos_list) + sum(g.monto for g in gastos_list)
+        tot_ing = tot_mens + tot_ventas + tot_otros
+        balance = tot_ing - tot_egr
+
+    context = {
+        'caja': caja,
+        'cuotas': cuotas,
+        'ventas': ventas,
+        'pagos_profesor': pagos_prof,
+        'ing_otros': ing_otros,
+        'egresos': egresos_list,
+        'gastos': gastos_list,
+        'inicio': inicio, 'fin': fin,
+        'tot_mens': tot_mens, 'tot_ventas': tot_ventas, 'tot_pagos_prof': tot_pagos_prof, 'tot_otros': tot_otros,
+        'tot_ing': tot_ing, 'tot_egr': tot_egr, 'balance': balance,
+    }
+    return render(request, 'detalle_caja.html', context)
 
 
 def detalle_balance(request, balance_id):
     balance = get_object_or_404(BalanceDiario, id=balance_id)
-    
-    ingresos_hoy = ingresos.objects.filter(gimnasio=balance.gimnasio, fecha=balance.fecha)
-    egresos_hoy = egreso.objects.filter(gimnasio=balance.gimnasio, fecha=balance.fecha)
-    
+    gym = balance.gimnasio
+    f = balance.fecha
+
+    ingresos_hoy = ingresos.objects.filter(gimnasio=gym, fecha=f)
+    cuotas_hoy = Cuota.objects.filter(gimnasio=gym, fecha_inicio=f).select_related('socio', 'tipo_mensualidad')
+    ventas_hoy = Venta.objects.filter(gimnasio=gym, fecha=f, profesor__isnull=True).select_related('producto')
+    pagos_profesor_hoy = PagoProfesor.objects.filter(gimnasio=gym, fecha=f).select_related('profesor')
+    egresos_hoy = egreso.objects.filter(gimnasio=gym, fecha=f)
+    gastos_hoy = Gasto.objects.filter(gimnasio=gym, fecha=f)
+
+    ing_mens = sum(c.precio or 0 for c in cuotas_hoy)
+    ing_ven = sum(v.monto_total for v in ventas_hoy)
+    ing_pagos_prof = sum(p.monto for p in pagos_profesor_hoy)
+    ing_otros = ingresos_hoy.exclude(tipo_ingreso__in=['Mensualidad', 'Venta', 'Renovación']).aggregate(s=Sum('monto'))['s'] or 0
+    ing_renov = ingresos_hoy.filter(tipo_ingreso='Renovación').aggregate(s=Sum('monto'))['s'] or 0
+
+    ef_ing = sum((c.efectivo or 0) for c in cuotas_hoy) + sum((v.efectivo or 0) for v in ventas_hoy)
+    tr_ing = sum((c.transferencia or 0) for c in cuotas_hoy) + sum((v.transferencia or 0) for v in ventas_hoy)
+    tc_ing = sum((c.tarjeta_credito or 0) for c in cuotas_hoy) + sum((v.tarjeta_credito or 0) for v in ventas_hoy)
+
+    tot_egr = (egresos_hoy.aggregate(s=Sum('monto'))['s'] or 0) + (gastos_hoy.aggregate(s=Sum('monto'))['s'] or 0)
+    ef_egr = sum(g.monto for g in gastos_hoy if g.forma_pago == 'efectivo') + sum((p.efectivo or 0) for p in pagos_profesor_hoy)
+    tr_egr = sum(g.monto for g in gastos_hoy if g.forma_pago == 'transferencia') + sum((p.transferencia or 0) for p in pagos_profesor_hoy)
+    tc_egr = sum(g.monto for g in gastos_hoy if g.forma_pago == 'tarjeta_credito') + sum((p.tarjeta_credito or 0) for p in pagos_profesor_hoy)
+    egresos_sin_fp = egresos_hoy.exclude(tipo_ingreso='Pago profesor').aggregate(s=Sum('monto'))['s'] or 0
+
     context = {
         'balance': balance,
         'ingresos': ingresos_hoy,
+        'cuotas': cuotas_hoy,
+        'ventas': ventas_hoy,
+        'pagos_profesor': pagos_profesor_hoy,
         'egresos': egresos_hoy,
+        'gastos': gastos_hoy,
+        'ing_mens': ing_mens,
+        'ing_ventas': ing_ven,
+        'ing_renov': ing_renov,
+        'ing_pagos_prof': ing_pagos_prof,
+        'ing_otros': ing_otros,
+        'ef_ing': ef_ing, 'tr_ing': tr_ing, 'tc_ing': tc_ing,
+        'tot_egr': tot_egr,
+        'ef_egr': ef_egr, 'tr_egr': tr_egr, 'tc_egr': tc_egr,
+        'egresos_sin_fp': egresos_sin_fp,
     }
     return render(request, 'detalle_balance.html', context)
 
@@ -819,55 +1775,72 @@ def detalle_balance(request, balance_id):
 
 ##lista de ingresos
 
+@login_required
 def listado_ingresos_diarios(request):
+    gym = get_gimnasio_actual(request)
     fecha = request.GET.get('fecha', date.today().isoformat())
-    registros_ingreso = RegistroIngreso.objects.filter(fecha_ingreso__date=fecha).order_by('-fecha_ingreso')
+    try:
+        fecha_obj = datetime.strptime(fecha, '%Y-%m-%d').date() if fecha else date.today()
+    except (ValueError, TypeError):
+        fecha_obj = date.today()
+    qs = RegistroIngreso.objects.filter(fecha_ingreso__date=fecha)
+    if gym:
+        qs = qs.filter(gimnasio=gym)
+    registros_ingreso = qs.order_by('-fecha_ingreso')
     ingresos_con_socio = []
 
     for registro in registros_ingreso:
         try:
             socio = Socio.objects.get(dni=registro.dni_socio)
-            try:
-                ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
-                fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
-            except Cuota.DoesNotExist:
-                fecha_vencimiento = None
-            
+            fecha_vencimiento = socio.fecha_vencimiento
+            if not fecha_vencimiento:
+                try:
+                    ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
+                    fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
+                except Cuota.DoesNotExist:
+                    fecha_vencimiento = None
+
+            # Mostrar clases DESPUÉS del ingreso (ya se descontó 1 al registrar)
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
             ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
-                'dni': registro.dni_socio, # DNI agregado aquí
+                'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': fecha_vencimiento,
-                'clases_restantes': registro.clases_restantes_al_ingresar, #Obtenemos las clases restantes del registro.
+                'vencido': bool(fecha_vencimiento and fecha_vencimiento < fecha_obj),
+                'clases_restantes': clases_despues,
                 'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
             })
-            print(f"Clases restantes de {registro.nombre_socio} {registro.apellido_socio}: {registro.clases_restantes_al_ingresar}")
         except Socio.DoesNotExist:
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
             ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
-                'clases_restantes': registro.clases_restantes_al_ingresar,
-                 'tipo_mensualidad': 'Socio no encontrado',
-                
+                'vencido': False,
+                'clases_restantes': clases_despues,
+                'tipo_mensualidad': 'Socio no encontrado',
             })
-            print(f"Socio no encontrado con DNI: {registro.dni_socio}")
         except Exception as e:
-             ingresos_con_socio.append({
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
+            ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
-                'clases_restantes': registro.clases_restantes_al_ingresar,
-                 'tipo_mensualidad': 'Error al obtener mensualidad',
-             })
-             print(f"Error al procesar registro de ingreso: {e}")
+                'vencido': False,
+                'clases_restantes': clases_despues,
+                'tipo_mensualidad': 'Error al obtener mensualidad',
+            })
 
-    context = {'ingresos': ingresos_con_socio, 'fecha': fecha}
+    context = {'ingresos': ingresos_con_socio, 'fecha': fecha, 'fecha_obj': fecha_obj}
     return render(request, 'listado_ingresos.html', context)
 
 def historial_ingresos(request):
@@ -895,47 +1868,62 @@ def historial_ingresos(request):
     return render(request, 'historial_ingresos.html', context)
 
 def detalle_ingresos_dia(request, fecha):
+    try:
+        fecha_obj = fecha if hasattr(fecha, 'year') else datetime.strptime(str(fecha), '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        fecha_obj = date.today()
     registros_ingreso = RegistroIngreso.objects.filter(fecha_ingreso__date=fecha).order_by('-fecha_ingreso')
     ingresos_con_socio = []
 
     for registro in registros_ingreso:
         try:
             socio = Socio.objects.get(dni=registro.dni_socio)
-            try:
-                ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
-                fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
-            except Cuota.DoesNotExist:
-                fecha_vencimiento = None
-            
+            fecha_vencimiento = socio.fecha_vencimiento
+            if not fecha_vencimiento:
+                try:
+                    ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
+                    fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
+                except Cuota.DoesNotExist:
+                    fecha_vencimiento = None
+
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
             ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': fecha_vencimiento,
-                'clases_restantes': registro.clases_restantes_al_ingresar,
-                 'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
+                'vencido': bool(fecha_vencimiento and fecha_vencimiento < fecha_obj),
+                'clases_restantes': clases_despues,
+                'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
             })
         except Socio.DoesNotExist:
-              ingresos_con_socio.append({
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
+            ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
-                'clases_restantes': registro.clases_restantes_al_ingresar,
-                 'tipo_mensualidad': 'Socio no encontrado',
+                'vencido': False,
+                'clases_restantes': clases_despues,
+                'tipo_mensualidad': 'Socio no encontrado',
             })
         except Exception as e:
-             ingresos_con_socio.append({
+            cr = registro.clases_restantes_al_ingresar
+            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
+            ingresos_con_socio.append({
                 'nombre': registro.nombre_socio,
                 'apellido': registro.apellido_socio,
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
-                'clases_restantes': registro.clases_restantes_al_ingresar,
-                 'tipo_mensualidad': 'Error al obtener mensualidad',
-             })
+                'vencido': False,
+                'clases_restantes': clases_despues,
+                'tipo_mensualidad': 'Error al obtener mensualidad',
+            })
 
 
     context = {
@@ -960,6 +1948,7 @@ def api_socios(request, socio_id=None):
                 'dni': socio.dni,
                 'nombre': socio.nombre,
                 'apellido': socio.apellido,
+                'celular': socio.celular,
                 'tipo_mensualidad': tipo_mensualidad,
                 'clases_restantes': socio.clases_restantes,
                 'fecha_vencimiento' : socio.fecha_vencimiento
@@ -982,6 +1971,7 @@ def api_socios(request, socio_id=None):
                          'dni': socio.dni,
                          'nombre': socio.nombre,
                          'apellido': socio.apellido,
+                         'celular': socio.celular,
                          'tipo_mensualidad': tipo_mensualidad,
                          'clases_restantes': socio.clases_restantes,
                          'fecha_vencimiento': socio.fecha_vencimiento
@@ -1020,3 +2010,122 @@ def registrar_ingreso(request):
         except json.JSONDecodeError:
             return JsonResponse({'error': 'JSON invalido'}, status=400)
     return JsonResponse({'error': 'Metodo no permitido'}, status=405)
+
+
+# API: categorías y mensualidades por categoría (filtradas por gimnasio)
+@csrf_exempt
+def api_categorias(request):
+    if request.method == 'GET':
+        gimnasio_id = request.GET.get('gimnasio_id')
+        qs = CategoriaMensualidad.objects.all().order_by('nombre')
+        if gimnasio_id:
+            qs = qs.filter(gimnasio_id=gimnasio_id)
+        data = [{'id': c.id, 'nombre': c.nombre} for c in qs.distinct()]
+        return JsonResponse(data, safe=False)
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+
+@csrf_exempt
+def api_mensualidades_por_categoria(request):
+    if request.method == 'GET':
+        categoria_id = request.GET.get('categoria_id')
+        if not categoria_id:
+            return JsonResponse({'error': 'categoria_id requerido'}, status=400)
+        tipos = TipoMensualidad.objects.filter(categoria_id=categoria_id).order_by('tipo')
+        data = [{
+            'id': t.id,
+            'tipo': t.tipo,
+            'precio': float(t.precio),
+            'frecuencia': t.get_frecuencia_display() if t.frecuencia else '',
+            'clases_incluidas': t.clases_incluidas
+        } for t in tipos]
+        return JsonResponse(data, safe=False)
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+
+# API: ingreso por DNI - busca socio, registra ingreso, devuelve datos para pantalla
+@csrf_exempt
+def api_ingreso_por_dni(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body) if request.body else {}
+            dni = (data.get('dni') or '').strip()
+            if not dni:
+                return JsonResponse({'error': 'DNI requerido', 'ok': False}, status=400)
+            gimnasio_id = data.get('gimnasio_id')
+            qs = Socio.objects.filter(dni=dni)
+            if gimnasio_id:
+                qs = qs.filter(gimnasio_id=gimnasio_id)
+            try:
+                socio = qs.get()
+            except Socio.DoesNotExist:
+                return JsonResponse({
+                    'ok': False,
+                    'encontrado': False,
+                    'mensaje': 'Socio no encontrado'
+                })
+            hoy = date.today()
+            vigente = True
+            mensaje_vigencia = ''
+            if socio.fecha_vencimiento and socio.fecha_vencimiento < hoy:
+                vigente = False
+                mensaje_vigencia = 'Mensualidad vencida'
+            elif socio.tipo_mensualidad and socio.tipo_mensualidad.frecuencia == 'clases' and socio.clases_restantes <= 0:
+                vigente = False
+                mensaje_vigencia = 'Sin clases restantes'
+            tipo_mens = socio.tipo_mensualidad
+            mes_vencido = bool(socio.fecha_vencimiento and socio.fecha_vencimiento < hoy)
+            es_plan_clases = bool(tipo_mens and tipo_mens.frecuencia == 'clases')
+            usa_contador_clases = bool(
+                tipo_mens
+                and tipo_mens.frecuencia != 'pase_libre'
+                and (es_plan_clases or (socio.clases_restantes or 0) > 0 or tipo_mens.clases_incluidas)
+            )
+            dias_restantes = None
+            if socio.fecha_vencimiento:
+                delta = socio.fecha_vencimiento - hoy
+                dias_restantes = max(0, delta.days)
+            RegistroIngreso.objects.create(
+                gimnasio=socio.gimnasio,
+                dni_socio=socio.dni,
+                fecha_ingreso=tz.now(),
+                clases_restantes_al_ingresar=socio.clases_restantes,
+                nombre_socio=socio.nombre,
+                apellido_socio=socio.apellido
+            )
+            if vigente and tipo_mens and tipo_mens.frecuencia == 'clases' and socio.clases_restantes > 0:
+                socio.clases_restantes = F('clases_restantes') - 1
+                socio.save(update_fields=['clases_restantes'])
+                socio.refresh_from_db()
+            return JsonResponse({
+                'ok': True,
+                'encontrado': True,
+                'vigente': vigente,
+                'nombre': socio.nombre,
+                'apellido': socio.apellido,
+                'tipo_mensualidad': tipo_mens.tipo if tipo_mens else 'Sin mensualidad',
+                'categoria': tipo_mens.categoria.nombre if tipo_mens and tipo_mens.categoria else '',
+                'clases_restantes': socio.clases_restantes,
+                'fecha_vencimiento': socio.fecha_vencimiento.isoformat() if socio.fecha_vencimiento else None,
+                'dias_restantes': dias_restantes,
+                'mes_vencido': mes_vencido,
+                'es_plan_clases': es_plan_clases,
+                'usa_contador_clases': usa_contador_clases,
+                'frecuencia': tipo_mens.frecuencia if tipo_mens else None,
+                'mensaje_vigencia': mensaje_vigencia
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'JSON inválido', 'ok': False}, status=400)
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+
+@login_required
+def pantalla_ingreso(request):
+    """Página que abre la pantalla de ingreso en nueva ventana."""
+    return render(request, 'pantalla_ingreso.html')
+
+
+def pantalla_ingreso_kiosk(request):
+    """Vista fullscreen para kiosco: ingreso por DNI con cartel de bienvenida. Sin login para uso en pantalla dedicada."""
+    gym_id = request.GET.get('gym')
+    return render(request, 'pantalla_ingreso_kiosk.html', {'gimnasio_id': gym_id or ''})

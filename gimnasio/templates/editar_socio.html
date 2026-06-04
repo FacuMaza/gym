@@ -1,69 +1,39 @@
-{% extends "base.html" %}
-{% load static %}
+﻿{% extends "base.html" %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Editar Socio</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: center;
-         min-height: 60vh;
-      }
-      .card {
-        width: 80%;
-        max-width: 800px;
-        display: flex;
-        flex-direction: column;
-      }
-       .card-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 2rem;
-    }
-      .button-container {
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-    }
-      .spaced-buttons {
-        display: flex;
-        justify-content: center;
-        gap: 10px;
-         margin-top: 1rem;
-        margin-bottom: 0.5rem;
-      }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card">
-            <div class="card-body">
-               <h2 class="card-title">Editar Socio</h2>
-                <form method="post">
-                    {% csrf_token %}
-                    {{ form.as_p }}
-                   <div class="spaced-buttons">
-                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-                        <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Cancelar</a>
+<div class="container page-container py-4">
+    <div class="card shadow border-0">
+        <div class="card-body p-3 p-md-4">
+            <h2 class="card-title mb-4">Editar Socio</h2>
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3">
+                    {% for field in form %}
+                    {% if field.name != 'celular' and field.name != 'codigo_pais' %}
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
                     </div>
-                </form>
-            </div>
+                    {% endif %}
+                    {% endfor %}
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">{{ form.celular.label }}</label>
+                        <div class="input-group">
+                            {{ form.codigo_pais }}
+                            {{ form.celular }}
+                        </div>
+                        {% if form.celular.errors %}<div class="text-danger small">{{ form.celular.errors.0 }}</div>{% endif %}
+                        {% if form.codigo_pais.errors %}<div class="text-danger small">{{ form.codigo_pais.errors.0 }}</div>{% endif %}
+                    </div>
+                </div>
+
+                {% for error in form.non_field_errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                    <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
         </div>
     </div>
-   <div class="button-container">
-      
-    </div>
-
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+</div>
 {% endblock %}

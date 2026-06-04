@@ -1,99 +1,82 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <title>Lista de Ventas</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        .center-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 60vh;
-        }
-        .card {
-            width: 85%;
-            max-width: 1100px;
-            display: flex;
-            flex-direction: column;
-        }
-        .card-body {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 2.2rem;
-        }
-        .table-container {
-            flex: 1;
-            overflow-y: auto;
-        }
-        .table th, .table td {
-            font-size: 1.1rem;
-            padding: 0.8rem;
-        }
-        .button-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 1.2rem;
-            margin-bottom: 0.6rem;
-        }
-          .spaced-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 1.2rem;
-            margin-bottom: 0.6rem;
-        }
-         .card-title {
-             font-size: 1.6rem;
-             margin-bottom: 1.2rem;
-        }
-    </style>
-</head>
-<body>
-<div class="center-container">
-    <div class="card">
-        <div class="card-body">
-            <h2 class="card-title">Lista de Ventas</h2>
-            
-            <div class="table-container">
-                <table class="table table-striped">
-                    <thead>
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0 fw-bold">Ventas</h2>
+        {% if puede_operar_caja %}
+        <a href="{% url 'venta_crear' %}" class="btn btn-success">+ Nueva venta</a>
+        {% elif caja_abierta %}
+        <span class="text-muted small">Caja abierta por {{ caja_abierta.usuario_apertura.usuario }} — no podés vender</span>
+        {% else %}
+        <a href="{% url 'balance_diario' %}" class="btn btn-outline-secondary btn-sm">Abrir caja para vender</a>
+        {% endif %}
+    </div>
+
+    <form method="get" class="mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto flex-grow-1" style="max-width: 280px;">
+                <div class="input-group">
+                    <span class="input-group-text bg-light">🔍</span>
+                    <input type="text" name="q" class="form-control" placeholder="Buscar por producto..." value="{{ q_buscar }}">
+                </div>
+            </div>
+            <div class="col-auto" style="min-width: 180px;">
+                <label class="form-label small mb-0">Filtrar por profesor</label>
+                <select name="profesor" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for p in profesores %}
+                    <option value="{{ p.pk }}" {% if filtro_profesor == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.apellido }}, {{ p.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                {% if q_buscar or filtro_profesor %}<a href="{% url 'venta_list' %}" class="btn btn-outline-secondary">Limpiar</a>{% endif %}
+            </div>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
                         <tr>
                             <th>Producto</th>
+                            <th>Profesor</th>
                             <th>Usuario</th>
-                            <th>Cantidad</th>
-                            <th>Gimnasio</th>
+                            <th>Cant.</th>
                             <th>Efectivo</th>
                             <th>Transferencia</th>
-                            <th>Tarjeta Crédito</th>
-                         </tr>
+                            <th>Tarjeta</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for venta in ventas %}
-                            <tr>
-                                <td>{{ venta.producto.descripcion }}</td>
-                                <td>{{ venta.usuario }}</td>
-                                <td>{{ venta.cantidad }}</td>
-                                <td>{{ venta.gimnasio }}</td>
-                                <td>{{ venta.efectivo|default_if_none:"" }}</td>
-                                <td>{{ venta.transferencia|default_if_none:"" }}</td>
-                                <td>{{ venta.tarjeta_credito|default_if_none:"" }}</td>
-                            </tr>
+                        <tr>
+                            <td class="fw-semibold">{{ venta.producto.descripcion }}</td>
+                            <td>
+                                {% if venta.profesor %}
+                                <a href="{% url 'profesor_detalle' venta.profesor.pk %}" class="badge bg-info text-decoration-none">{{ venta.profesor.apellido }}, {{ venta.profesor.nombre }}</a>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>{{ venta.usuario.usuario }}</td>
+                            <td>{{ venta.cantidad }}</td>
+                            <td>{% if venta.efectivo %}$ {{ venta.efectivo|moneda_ar }}{% else %}-{% endif %}</td>
+                            <td>{% if venta.transferencia %}$ {{ venta.transferencia|moneda_ar }}{% else %}-{% endif %}</td>
+                            <td>{% if venta.tarjeta_credito %}$ {{ venta.tarjeta_credito|moneda_ar }}{% else %}-{% endif %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                {% if q_buscar %}No se encontraron ventas para "{{ q_buscar }}".{% else %}No hay ventas registradas.{% endif %}
+                            </td>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            <div class="button-container">
-                 <a href="{% url 'venta_crear' %}" class="btn btn-primary mb-3">Crear Nueva Venta</a>
-            </div>
         </div>
     </div>
 </div>
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
 {% endblock %}

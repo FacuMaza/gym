@@ -1,0 +1,42 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>{{ categoria.nombre }}</h2>
+        <div>
+            <a href="{% url 'crear_opcion_mensualidad' categoria.pk %}" class="btn btn-success">+ Agregar opción</a>
+            <a href="{% url 'lista_tipos_mensualidad' %}" class="btn btn-outline-secondary">Volver</a>
+        </div>
+    </div>
+    <p class="text-muted mb-3">Opciones dentro del plan (libre, 12 clases, 8 clases, etc.)</p>
+    <div class="card shadow">
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Opción</th>
+                        <th>Precio</th>
+                        <th>Clases incluidas</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for op in opciones %}
+                    <tr>
+                        <td>{{ op.tipo }}</td>
+                        <td>$ {{ op.precio|moneda_ar }}</td>
+                        <td>{{ op.clases_incluidas|default:"Pase libre" }}</td>
+                        <td>
+                            <a href="{% url 'editar_tipo_mensualidad' op.pk %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{% url 'eliminar_tipo_mensualidad' op.pk %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted">No hay opciones. Agregá libre, 12 clases, 8 clases, etc.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

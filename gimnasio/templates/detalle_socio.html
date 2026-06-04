@@ -1,100 +1,55 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% load static %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Detalles del Socio</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: center;
-         min-height: 60vh;
-      }
-      .card {
-        width: 80%;
-        max-width: 800px;
-        display: flex;
-        flex-direction: column;
-      }
-       .card-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 2rem;
-    }
-      .button-container {
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-    }
-      .spaced-buttons {
-        display: flex;
-        justify-content: center; /* Centra los botones horizontalmente */
-        gap: 10px; /* Espacio entre los botones */
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-      }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card">
-            <div class="card-body">
-               <h2 class="card-title">Detalles del Socio</h2>
-               <tr>
-                <h4>{{ socio.nombre }} {{ socio.apellido }}</h4>
-               </tr>
-                
-                <table class="table table-striped">
-                  <tbody>
+<div class="container page-container container-narrow py-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title mb-1">Detalles del Socio</h2>
+            <h4 class="mb-4 text-muted">{{ socio.nombre }} {{ socio.apellido }}</h4>
+            <table class="table table-striped mb-0">
+                <tbody>
                     <tr>
-                      <th>Nombre</th>
-                      <td>{{ socio.nombre }}</td>
-                    </tr>
-                     <tr>
-                      <th>Apellido</th>
-                      <td>{{ socio.apellido }}</td>
+                        <th>Nombre</th>
+                        <td>{{ socio.nombre }}</td>
                     </tr>
                     <tr>
-                      <th>DNI</th>
-                      <td>{{ socio.dni }}</td>
+                        <th>Apellido</th>
+                        <td>{{ socio.apellido }}</td>
                     </tr>
-                      <tr>
-                      <th>Gimnasio</th>
-                      <td>{{ socio.gimnasio }}</td>
+                    <tr>
+                        <th>DNI</th>
+                        <td>{{ socio.dni }}</td>
+                    </tr>
+                    <tr>
+                        <th>Celular</th>
+                        <td>{{ socio.celular|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Gimnasio</th>
+                        <td>{{ socio.gimnasio }}</td>
                     </tr>
                     {% if ultima_cuota %}
-                      <tr>
-                       <th>Última Cuota</th>
+                    <tr>
+                        <th>Última Cuota</th>
                         <td>{{ ultima_cuota.tipo_mensualidad }}</td>
-                      </tr>
+                    </tr>
                     {% else %}
-                     <tr>
-                       <th>Última Cuota</th>
+                    <tr>
+                        <th>Última Cuota</th>
                         <td>No tiene cuotas registradas</td>
-                      </tr>
+                    </tr>
                     {% endif %}
-                  </tbody>
-                </table>
-                <div class="spaced-buttons">
-                    <a href="{% url 'editar_socio' socio.pk %}" class="btn btn-sm btn-warning">Editar</a>
-                    <a href="{% url 'eliminar_socio' socio.pk %}" class="btn btn-sm btn-danger">Eliminar</a>
-                 </div>
+                </tbody>
+            </table>
+            <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
+                <a href="{% url 'editar_socio' socio.pk %}" class="btn btn-warning">Editar</a>
+                <a href="{% url 'eliminar_socio' socio.pk %}" class="btn btn-danger">Eliminar</a>
+                <a href="{% url 'enviar_mensaje_socio' socio.pk %}" class="btn btn-primary">Enviar mensaje</a>
+            </div>
+            <div class="text-center mt-3">
+                <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Volver a la lista</a>
             </div>
         </div>
     </div>
-   <div class="button-container">
-       <a href="{% url 'lista_socios' %}" class="btn btn-secondary">Volver a la lista</a>
-   </div>
-
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+</div>
 {% endblock %}

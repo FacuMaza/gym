@@ -1,0 +1,94 @@
+﻿{% extends 'base.html' %}
+
+
+{% block content %}
+
+<div class="container page-container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+
+        <h2 class="mb-0 fw-bold">Detalle del pago</h2>
+
+        <a href="{% url 'profesor_detalle' pago.profesor_id %}" class="btn btn-outline-secondary">Volver al profesor</a>
+
+    </div>
+
+
+
+    <div class="card border-0 shadow-sm mb-4">
+
+        <div class="card-header bg-success text-white">
+
+            <h5 class="mb-0">Pago registrado — {{ pago.profesor.nombre }} {{ pago.profesor.apellido }}</h5>
+
+        </div>
+
+        <div class="card-body">
+
+            <div class="row g-3">
+
+                <div class="col-md-4"><strong>Fecha:</strong> {{ pago.fecha|date:"d/m/Y" }}</div>
+
+                <div class="col-md-4"><strong>Monto pagado:</strong> $ {{ pago.monto|moneda_ar }}</div>
+
+                <div class="col-md-4"><strong>Desglose:</strong>
+
+                    {% if pago.efectivo %}Efectivo $ {{ pago.efectivo|moneda_ar }}{% endif %}
+
+                    {% if pago.transferencia %} — Transferencia $ {{ pago.transferencia|moneda_ar }}{% endif %}
+
+                    {% if pago.tarjeta_credito %} — Tarjeta $ {{ pago.tarjeta_credito|moneda_ar }}{% endif %}
+
+                    {% if pago.nombre_titular %}<br><small class="text-muted">Titular: {{ pago.nombre_titular }}</small>{% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <div class="card border-0 shadow-sm">
+
+        <div class="card-header bg-light">
+
+            <h5 class="mb-0">Liquidación incluida en este pago</h5>
+
+        </div>
+
+        <div class="card-body">
+
+            <ul class="list-group list-group-flush">
+
+                <li class="list-group-item d-flex justify-content-between">
+
+                    <span>Productos a cuenta liquidados</span>
+
+                    <strong>$ {{ total_ventas|moneda_ar }}</strong>
+
+                </li>
+
+                <li class="list-group-item d-flex justify-content-between">
+
+                    <span>Adelantos liquidados</span>
+
+                    <strong>$ {{ total_adelantos|moneda_ar }}</strong>
+
+                </li>
+
+            </ul>
+
+            <p class="text-muted small mb-0 mt-3">Estos montos se cerraron al confirmar el pago. El profesor queda sin deuda pendiente hasta nuevos cargos o adelantos.</p>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+

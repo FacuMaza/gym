@@ -1,133 +1,140 @@
 {% load static %}
-{% block content %}
-
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>Club de Boxeo</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión — GYM-PRO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --accent: #38bdf8;
+            --accent-hover: #7dd3fc;
+        }
+        * { box-sizing: border-box; }
         body {
-            background-image: url("{% static 'img/ring.jpeg' %}");
-            background-size: cover; /* Cubre toda la pantalla */
-            background-position: center;
-            background-repeat: no-repeat;
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
             min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #334155 100%);
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 1rem;
         }
-
-        .overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255,); /* Capa semitransparente para mejorar el contraste */
-            pointer-events: none; /* Permite la interacción con los elementos debajo */
-        }
-
-        .watermark {
-            padding: center;
-            width: 100%;
-            max-width: 700px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.); /* Sutil sombra */
-            z-index: 1;
-            background-color: rgba(255, 255, 255, 0.5); /* Fondo del contenedor */
-        }
-        .watermark form{
+        .login-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3rem;
+            max-width: 900px;
             width: 100%;
         }
-
-        .card {
-            background: none;
-            border: none;
-            padding: 20px;
-        }
-
-        .card-header{
-            background: none;
-            border: none;
+        .brand {
+            flex: 1;
             text-align: center;
-            font-size: 2rem;
-            font-weight: bold;
-            color: rgb(105, 105, 105);
         }
-        .form-group label {
-            color: #212529;
-            font-weight: bold;
+        .brand h1 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 800;
+            color: white;
+            letter-spacing: -0.03em;
+            margin: 0;
+            text-shadow: 0 2px 20px rgba(56, 189, 248, 0.3);
         }
-
+        .brand h1 span {
+            color: var(--accent);
+        }
+        .brand p {
+            color: rgba(255,255,255,0.6);
+            font-size: 1rem;
+            margin-top: 0.5rem;
+        }
+        .login-card {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+            width: 100%;
+            max-width: 380px;
+        }
+        .login-card h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 1.5rem;
+        }
         .form-control {
-            background-color: rgba(255, 255, 255, 0.6);  /* Controles mas transparentes */
-            color: #212529;
-            border: 1px solid rgba(0,0,0,0.2) /* Bordes mas claros */
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
         }
-
         .form-control:focus {
-            background-color: rgba(255, 255, 255, 0.8);
-            border-color: #007bff;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
         }
-
-        .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
+        .form-label {
+            font-weight: 500;
+            color: #475569;
         }
-
-        .btn-primary:hover {
-            background-color: #0056b3;
-            border-color: #0056b3;
+        .btn-login {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            width: 100%;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
-
-        .recover-password {
-            margin-top: 10px;
+        .btn-login:hover {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(14, 165, 233, 0.3);
+        }
+        .recover-link {
+            display: block;
             text-align: center;
+            margin-top: 1rem;
+            color: #64748b;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .recover-link:hover { color: var(--accent); }
+        @media (max-width: 768px) {
+            .login-wrapper { flex-direction: column; }
+            .brand h1 { font-size: 2.5rem; }
         }
     </style>
 </head>
 <body>
-    <div class="overlay"></div> <!-- Capa semitransparente -->
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <div class="watermark">
-                    <div class="card">
-                        <div class="card-body">
-                            {% if messages %}
-                            <ul class="messages">
-                                {% for message in messages %}
-                                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-                                {% endfor %}
-                            </ul>
-                            {% endif %}
-                            <form method="post">
-                                {% csrf_token %}
-                                <div class="form-group">
-                                    <label for="username">Usuario</label>
-                                    <input type="text" name="username" id="username" class="form-control" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="password">Contraseña</label>
-                                    <input type="password" name="password" id="password" class="form-control" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary">Ingresar</button>
-                            </form>
-                            <div class="recover-password">
-                                <a href="{% url 'password_reset_request' %}">Recuperar Contraseña</a>
-                            </div>
-                        </div>
-                    </div>
+    <div class="login-wrapper">
+        <div class="brand">
+            <h1>GYM<span>-PRO</span></h1>
+            <p>Gestión de gimnasios</p>
+        </div>
+        <div class="login-card">
+            <h2>Iniciar sesión</h2>
+            {% if error %}
+            <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+            {% endif %}
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="username" class="form-label">Usuario</label>
+                    <input type="text" name="username" id="username" class="form-control" placeholder="Tu usuario" required autofocus>
                 </div>
-            </div>
+                <div class="mb-4">
+                    <label for="password" class="form-label">Contraseña</label>
+                    <input type="password" name="password" id="password" class="form-control" placeholder="Tu contraseña" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-login">Ingresar</button>
+            </form>
+            <a href="{% url 'password_reset_request' %}" class="recover-link">Recuperar contraseña</a>
         </div>
     </div>
-
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
-{% endblock %}

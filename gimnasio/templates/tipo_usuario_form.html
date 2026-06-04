@@ -1,15 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>{% if form.instance.pk %}Editar Tipo de Usuario{% else %}Crear Tipo de Usuario{% endif %}</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
-<body>
-    <div class="container">
+<div class="container page-container py-4">
         <h1>{% if form.instance.pk %}Editar Tipo de Usuario{% else %}Crear Tipo de Usuario{% endif %}</h1>
         <form method="post">
             {% csrf_token %}
@@ -19,6 +11,4 @@
         </form>
     </div>
      <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
 {% endblock %}

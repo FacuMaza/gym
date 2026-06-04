@@ -1,123 +1,199 @@
-{% extends "base.html" %}
-{% load static %}
+﻿{% extends 'base.html' %}
 {% block content %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <title>Venta</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-      .center-container {
-         display: flex;
-         justify-content: center;
-         align-items: center;
-         min-height: 60vh;
-      }
-      .card {
-        width: 60%; /* Reducido el ancho de la tarjeta */
-        max-width: 600px; /* Reducido el max-width */
-        display: flex;
-        flex-direction: column;
-      }
-       .card-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 1.5rem; /* Reducido el padding */
-    }
-      .button-container {
-        display: flex;
-        justify-content: center;
-        margin-top: 0.8rem; /* Reducido el margin top */
-        margin-bottom: 0.4rem; /* Reducido el margin bottom */
-    }
-      .spaced-buttons {
-          display: flex;
-          justify-content: center;
-          gap: 8px; /* Reducido el gap */
-          margin-top: 0.8rem; /* Reducido el margin top */
-          margin-bottom: 0.4rem; /* Reducido el margin bottom */
-      }
-        .form-group label {
-          display: block;
-          margin-bottom: 0.3rem; /* Reducido el margin bottom */
-            font-size: 0.9rem; /* Reducido el font size */
-        }
-         .form-group input,
-         .form-group select {
-             width: 100%;
-             padding: 0.4rem; /* Reducido el padding */
-             margin-bottom: 0.7rem; /* Reducido el margin bottom */
-             border: 1px solid #ddd;
-             border-radius: 0.2rem; /* Reducido el border radius */
-             font-size: 0.9rem;  /* Reducido el font size */
-           }
-        .card-title{
-            font-size: 1.2rem;  /* Reducido el font size */
-            margin-bottom: 0.8rem; /* Reducido el margin bottom */
-        }
-    </style>
-</head>
-<body>
-    <div class="center-container">
-        <div class="card">
-            <div class="card-body">
-                <h2 class="card-title">Venta</h2>
-                <form method="post">
-                    {% csrf_token %}
-                     {% for field in form %}
-                     <div class="form-group">
-                         {{ field.label_tag }}
-                         {{ field }}
-                         {% if field.errors %}
-                              <div class="alert alert-danger" role="alert" style="font-size:0.8rem;">
-                                 {{ field.errors|join:", " }}
-                               </div>
-                         {% endif %}
-                     </div>
-                     {% endfor %}
-                   <div class="spaced-buttons">
-                        <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
-                    </div>
-                </form>
+<div class="container page-container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
+                <div class="card-header py-3 bg-primary text-white">
+                    <h2 class="mb-0 fw-bold">Nueva venta</h2>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" id="form-venta">
+                        {% csrf_token %}
+
+                        {% if form.fields.profesor.queryset %}
+                        <div class="mb-4 p-3 rounded-3" style="background: #f8fafc;">
+                            <label for="id_profesor" class="form-label fw-semibold">¿A quién es la venta?</label>
+                            <select name="profesor" id="id_profesor" class="form-select form-select-lg">
+                                <option value="">Cliente — cobrar ahora</option>
+                                {% for choice in form.fields.profesor.queryset %}
+                                <option value="{{ choice.pk }}" {% if form.initial.profesor and form.initial.profesor.pk == choice.pk %}selected{% endif %}>
+                                    {{ choice.apellido }}, {{ choice.nombre }} — cargar a su cuenta
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-4">
+                            <label for="buscar-producto" class="form-label fw-semibold">Buscar producto</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">🔍</span>
+                                <input type="text" id="buscar-producto" class="form-control" placeholder="Escribí para filtrar...">
+                            </div>
+                            <label for="id_producto" class="form-label fw-semibold mt-2">Producto</label>
+                            <select name="producto" id="id_producto" class="form-select form-select-lg" required>
+                                <option value="">— Seleccionar —</option>
+                                {% for p in form.fields.producto.queryset %}
+                                <option value="{{ p.pk }}" data-precio="{{ p.precio|default:0 }}" data-desc="{{ p.descripcion|lower }}">
+                                    {{ p.descripcion }} — ${{ p.precio|moneda_ar }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if form.producto.errors %}<div class="text-danger small mt-1">{{ form.producto.errors.0 }}</div>{% endif %}
+                        </div>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label for="id_cantidad" class="form-label fw-semibold">Cantidad</label>
+                                <input type="number" name="cantidad" id="id_cantidad" class="form-control form-control-lg" min="1" value="1" required>
+                                {% if form.cantidad.errors %}<div class="text-danger small mt-1">{{ form.cantidad.errors.0 }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label fw-semibold">Total</label>
+                                <div class="form-control form-control-lg bg-light py-3 fs-4 fw-bold text-success" id="display-total">$ 0.00</div>
+                                <input type="hidden" name="total" id="id_total" value="0">
+                            </div>
+                        </div>
+
+                        <div id="bloque-pagos" class="mb-4">
+                            <div class="accordion" id="accordionPagos">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePagos">
+                                            Formas de pago (efectivo, transferencia, tarjeta)
+                                        </button>
+                                    </h2>
+                                    <div id="collapsePagos" class="accordion-collapse collapse" data-bs-parent="#accordionPagos">
+                                        <div class="accordion-body">
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">💵 Efectivo</label>
+                                                    <input type="number" name="efectivo" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">🏦 Transferencia</label>
+                                                    <input type="number" name="transferencia" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">💳 Tarjeta</label>
+                                                    <input type="number" name="tarjeta_credito" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
+                                                </div>
+                                            </div>
+                                            <div class="mt-3 d-none" id="div-titular">
+                                                <label class="form-label">Nombre del titular</label>
+                                                <input type="text" name="nombre_titular" id="id_nombre_titular" class="form-control" placeholder="Ej: Juan Pérez">
+                                                {% if form.nombre_titular.errors %}<div class="text-danger small">{{ form.nombre_titular.errors.0 }}</div>{% endif %}
+                                            </div>
+                                            <p class="text-muted small mt-2 mb-0">Faltante: $<span id="faltante">0</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="mensaje-cuenta" class="alert alert-info d-none mb-4">
+                            Se cargará a la cuenta del profesor. No se cobra efectivo.
+                        </div>
+
+                        {% for err in form.non_field_errors %}<div class="alert alert-danger">{{ err }}</div>{% endfor %}
+
+                        <div class="d-flex gap-2 pt-2 flex-wrap">
+                            <button type="submit" class="btn btn-success btn-lg px-4" id="btn-submit" disabled>Guardar venta</button>
+                            <a href="{% url 'venta_list' %}" class="btn btn-outline-primary">Historial</a>
+                            <a href="{% url 'index' %}" class="btn btn-outline-secondary">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-    <div class="button-container">
-          <a href="{% url 'venta_list' %}" class="btn btn-secondary btn-sm">Volver a la lista de ventas</a>
-    </div>
-    <script>
-         document.addEventListener('DOMContentLoaded', function() {
-             const cantidadInput = document.getElementById('id_cantidad');
-             const productoSelect = document.getElementById('id_producto');
-             const totalInput = document.getElementById('id_total');
+</div>
 
-             function calcularTotal() {
-                 const cantidad = parseFloat(cantidadInput.value) || 0;
-                 const productoId = productoSelect.value;
+<script>
+(function() {
+    var productoSelect = document.getElementById('id_producto');
+    var cantidadInput = document.getElementById('id_cantidad');
+    var profesorSelect = document.getElementById('id_profesor');
+    var totalHidden = document.getElementById('id_total');
+    var displayTotal = document.getElementById('display-total');
+    var inputs = document.querySelectorAll('.monto-pago');
+    var btnSubmit = document.getElementById('btn-submit');
+    var bloquePagos = document.getElementById('bloque-pagos');
+    var mensajeCuenta = document.getElementById('mensaje-cuenta');
 
-                 if (productoId && cantidad) {
-                     fetch(`/producto_precio/${productoId}`)
-                         .then(response => response.json())
-                         .then(data => {
-                         const precio = parseFloat(data.precio);
-                         const total = cantidad * precio;
-                         totalInput.value = total.toFixed(2);
-                     })
-                 .catch(error => console.error('Error fetching precio:', error));
-                 } else {
-                     totalInput.value = '0.00';
-                 }
-             }
+    function esVentaProfesor() {
+        return profesorSelect && profesorSelect.value !== '';
+    }
 
-             cantidadInput.addEventListener('input', calcularTotal);
-             productoSelect.addEventListener('change', calcularTotal);
-             calcularTotal();
-         });
-     </script>
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+    function calcularTotal() {
+        var opt = productoSelect.options[productoSelect.selectedIndex];
+        var precio = parseFloat(opt && opt.dataset.precio) || 0;
+        var cantidad = parseInt(cantidadInput.value, 10) || 0;
+        var total = precio * cantidad;
+        totalHidden.value = total.toFixed(2);
+        displayTotal.textContent = '$ ' + formatMonedaAR(total, 2);
+        actualizarUI();
+    }
+
+    function actualizarUI() {
+        var total = parseFloat(totalHidden.value) || 0;
+        if (esVentaProfesor()) {
+            bloquePagos.classList.add('d-none');
+            if (mensajeCuenta) mensajeCuenta.classList.remove('d-none');
+            btnSubmit.disabled = total <= 0;
+        } else {
+            if (bloquePagos) bloquePagos.classList.remove('d-none');
+            if (mensajeCuenta) mensajeCuenta.classList.add('d-none');
+            actualizarPagos();
+        }
+    }
+
+    function actualizarPagos() {
+        var total = parseFloat(totalHidden.value) || 0;
+        var suma = 0;
+        var inpTransfer = document.querySelector('input[name="transferencia"]');
+        var inpTarjeta = document.querySelector('input[name="tarjeta_credito"]');
+        inputs.forEach(function(inp) {
+            var val = parseFloat(inp.value) || 0;
+            suma += val;
+        });
+        var faltante = Math.max(0, total - suma);
+        var faltanteEl = document.getElementById('faltante');
+        if (faltanteEl) faltanteEl.textContent = formatMonedaAR(faltante, 2);
+        var divTitular = document.getElementById('div-titular');
+        var transf = inpTransfer ? parseFloat(inpTransfer.value) || 0 : 0;
+        var tarj = inpTarjeta ? parseFloat(inpTarjeta.value) || 0 : 0;
+        if (divTitular) {
+            if (transf > 0 || tarj > 0) divTitular.classList.remove('d-none');
+            else divTitular.classList.add('d-none');
+        }
+        btnSubmit.disabled = total <= 0 || (Math.abs(faltante) > 0.01 && !esVentaProfesor());
+    }
+
+    var buscarProducto = document.getElementById('buscar-producto');
+    if (buscarProducto) {
+        buscarProducto.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            var opts = productoSelect.querySelectorAll('option[value!=""]');
+            var firstMatch = null;
+            opts.forEach(function(opt) {
+                var desc = (opt.getAttribute('data-desc') || opt.textContent.toLowerCase());
+                var match = !q || desc.indexOf(q) !== -1;
+                opt.style.display = match ? '' : 'none';
+                if (match && !firstMatch) firstMatch = opt;
+            });
+            productoSelect.value = q && firstMatch ? firstMatch.value : '';
+            calcularTotal();
+        });
+    }
+
+    productoSelect.addEventListener('change', calcularTotal);
+    cantidadInput.addEventListener('input', calcularTotal);
+    if (profesorSelect) profesorSelect.addEventListener('change', actualizarUI);
+    inputs.forEach(function(inp) { inp.addEventListener('input', actualizarPagos); });
+
+    calcularTotal();
+})();
+</script>
 {% endblock %}

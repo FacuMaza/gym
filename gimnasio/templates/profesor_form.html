@@ -1,0 +1,29 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h2 class="mb-4 fw-bold">{{ accion }} profesor</h2>
+                    <form method="post">
+                        {% csrf_token %}
+                        {% for field in form %}
+                        <div class="mb-3">
+                            <label class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+                        </div>
+                        {% endfor %}
+                        <div class="d-flex gap-2 pt-2">
+                            <button type="submit" class="btn btn-success">Guardar</button>
+                            <a href="{% url 'profesor_list' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            {% if profesor %}<a href="{% url 'profesor_detalle' profesor.pk %}" class="btn btn-outline-primary">Ver detalle</a>{% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
