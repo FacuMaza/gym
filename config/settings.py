@@ -48,12 +48,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'gimnasio',
-    'rest_framework',
 ]
 
 
 # Configuración de Whitenoise para servir archivos estáticos.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Sin Manifest: evita 500/502 si collectstatic no generó staticfiles.json en el servidor.
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 
 MIDDLEWARE = [
