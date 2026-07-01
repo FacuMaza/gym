@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR acceso socios — {{ gimnasio_nombre }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+            background: #fff;
+            color: #0f172a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .sheet {
+            text-align: center;
+            max-width: 420px;
+            width: 100%;
+        }
+        .brand {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.25rem;
+        }
+        .brand span { color: #0284c7; }
+        .gym-name {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: #334155;
+        }
+        .qr-wrap {
+            display: inline-block;
+            padding: 1rem;
+            border: 3px solid #0f172a;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+        .qr-wrap img {
+            display: block;
+            width: 320px;
+            height: 320px;
+            max-width: 100%;
+        }
+        .hint {
+            font-size: 1.05rem;
+            line-height: 1.5;
+            color: #475569;
+            margin-bottom: 0.5rem;
+        }
+        .hint strong { color: #0f172a; }
+        .print-actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .print-actions button, .print-actions a {
+            font-family: inherit;
+            font-size: 0.95rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-print {
+            background: #0284c7;
+            color: #fff;
+            border: none;
+            font-weight: 600;
+        }
+        .btn-close-tab {
+            background: #fff;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+        }
+        @media print {
+            body { padding: 0; }
+            .print-actions { display: none !important; }
+            .sheet { max-width: none; }
+            .qr-wrap img { width: 280px; height: 280px; }
+        }
+        @page { margin: 1.5cm; }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <div class="brand">GYM<span>-PRO</span></div>
+        <p class="gym-name">{{ gimnasio_nombre }}</p>
+        <div class="qr-wrap">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data={{ login_url|urlencode }}" alt="QR acceso socios">
+        </div>
+        <p class="hint">Escaneá con la cámara del celular</p>
+        <p class="hint">Usuario: <strong>DNI</strong> · Contraseña: <strong>DNI</strong></p>
+    </div>
+    <div class="print-actions">
+        <button type="button" class="btn-print" onclick="window.print()">Imprimir</button>
+        <a href="javascript:window.close()" class="btn-close-tab">Cerrar</a>
+    </div>
+</body>
+</html>

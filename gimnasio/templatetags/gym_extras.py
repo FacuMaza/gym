@@ -31,22 +31,37 @@ def moneda_ar(value, decimales=2):
 
 
 @register.filter
+def categoria_socio(socio):
+    """Nombre de la categoría de actividad del socio (crossfit, pesas, etc.)."""
+    tm = getattr(socio, 'tipo_mensualidad', None)
+    if not tm:
+        return '-'
+    cat = getattr(tm, 'categoria', None)
+    return cat.nombre if cat else '-'
+
+
+@register.filter
 def etiqueta_plan_socio(socio):
     """Texto del plan en listados: distingue pase libre, por clases y frecuencias semanales."""
     tm = getattr(socio, 'tipo_mensualidad', None)
     if not tm:
         return '-'
+    pagado = getattr(socio, 'tiene_cuota', False)
     if tm.frecuencia == 'clases':
         incluidas = tm.clases_incluidas or 0
-        pagado = getattr(socio, 'tiene_cuota', False)
         if pagado and socio.clases_restantes is not None:
             return f'{socio.clases_restantes} clases'
         if incluidas:
             return f'{incluidas} clases (pendiente de pago)'
         return tm.tipo or 'Por clases'
     if tm.frecuencia == 'pase_libre':
-        return 'Pase libre'
-    return tm.get_frecuencia_display() or tm.tipo or '-'
+        if pagado:
+            return 'Pase libre'
+        return 'Pase libre (pendiente de pago)'
+    label = tm.get_frecuencia_display() or tm.tipo or '-'
+    if not pagado:
+        return f'{label} (pendiente de pago)'
+    return label
 
 
 @register.filter
@@ -55,9 +70,9 @@ def badge_plan_socio(socio):
     tm = getattr(socio, 'tipo_mensualidad', None)
     if not tm:
         return 'text-muted'
-    if tm.frecuencia == 'clases':
-        pagado = getattr(socio, 'tiene_cuota', False)
-        if pagado and (socio.clases_restantes or 0) > 0:
-            return 'bg-info'
+    pagado = getattr(socio, 'tiene_cuota', False)
+    if not pagado:
         return 'bg-warning text-dark'
+    if tm.frecuencia == 'clases' and (socio.clases_restantes or 0) > 0:
+        return 'bg-info'
     return 'bg-secondary'

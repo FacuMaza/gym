@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-3">QR acceso socios</h2>
+    <p class="text-muted mb-4">Los socios escanean el código y entran con <strong>DNI</strong> y contraseña <strong>DNI</strong> en el login de GYM-PRO.</p>
+    {% if qr_usa_ip_local %}
+    <div class="alert alert-warning">
+        Estás en modo prueba local: el QR usa la <strong>IP de tu PC en la red</strong> (no 127.0.0.1).
+        El celular debe estar en la <strong>misma WiFi</strong> y el servidor debe correr con
+        <code>python manage.py runserver 0.0.0.0:8000</code>.
+        En el VPS, configurá <code>PUBLIC_BASE_URL=https://tudominio.com</code> en el <code>.env</code>.
+    </div>
+    {% endif %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body text-center py-4">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={{ login_url|urlencode }}" alt="QR acceso socios" class="img-fluid mb-3" style="max-width: 280px;">
+            <p class="mb-0 fw-semibold">{{ gimnasio_actual.nombre|default:gimnasio_actual.direccion }}</p>
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'socio_qr_imprimir' %}" class="btn btn-primary" target="_blank" rel="noopener">Imprimir para mesa de entrada</a>
+        <a href="{% url 'rutinas_lista' %}" class="btn btn-outline-secondary">Volver a rutinas</a>
+    </div>
+</div>
+{% endblock %}

@@ -208,16 +208,103 @@
             padding: 0.65rem 1rem;
         }
 
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        main .form-control,
+        main .form-select,
+        main textarea.form-control {
+            max-width: 100%;
+        }
+        .form-card-narrow {
+            max-width: 500px;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        img, video, svg { max-width: 100%; height: auto; }
+        main .card-header.d-flex { flex-wrap: wrap; gap: 0.5rem; }
+
+        @media (max-width: 575.98px) {
+            main .table-detail-stack tbody tr {
+                display: block;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            main .table-detail-stack tbody th,
+            main .table-detail-stack tbody td {
+                display: block;
+                width: 100%;
+                border: none;
+                padding-left: 0;
+                padding-right: 0;
+            }
+            main .table-detail-stack tbody th {
+                padding-bottom: 0.15rem;
+                font-size: 0.8rem;
+                color: #64748b;
+                background: transparent;
+            }
+            main .table-detail-stack tbody td {
+                padding-top: 0;
+                padding-bottom: 0.75rem;
+                font-weight: 500;
+            }
+        }
+
+        @media (max-width: 991px) {
+            .gym-selector { max-width: 100%; width: 100%; }
+            .navbar-gym .d-flex.align-items-center.gap-3 {
+                flex-wrap: wrap;
+                justify-content: center;
+                width: 100%;
+                margin-top: 0.5rem;
+            }
+        }
         @media (max-width: 576px) {
             .table td, .table th { padding: 0.5rem; font-size: 0.9rem; }
+            .btn-group, .btn-group-sm { flex-wrap: wrap; }
             .btn-group-sm .btn { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
-            .d-flex.gap-2 { flex-wrap: wrap; }
+            .d-flex.gap-2, .d-flex.gap-3 { flex-wrap: wrap; }
             main > .container { padding-left: 0.75rem; padding-right: 0.75rem; }
+            main .d-flex.justify-content-between.align-items-center:not(.flex-nowrap) {
+                flex-wrap: wrap !important;
+            }
+            .navbar-gym .d-flex.align-items-center.gap-3 {
+                flex-direction: column;
+                align-items: stretch !important;
+            }
+            .navbar-gym .d-flex.align-items-center.gap-3 .btn {
+                width: 100%;
+            }
+            .caja-kpi .fs-3 { font-size: clamp(1.25rem, 6vw, 1.75rem) !important; }
+            .caja-kpi .card-body { min-height: auto !important; padding: 1rem !important; }
+            main .input-group.w-100 { width: 100% !important; max-width: 100% !important; }
+        }
+        @media (max-width: 380px) {
+            .navbar-gym .navbar-brand { font-size: 1rem; }
         }
         @media print {
             nav, header, footer { display: none !important; }
             main .card { box-shadow: none !important; }
         }
+    
+        #vencimiento-sistema {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            padding: 0.65rem 1rem;
+            text-align: center;
+            border-radius: 15px;
+            background-color: #e9ecef;
+            color: #343a40;
+            border: 1px solid #ced4da;
+        }
+        #vencimiento-sistema.vence-pronto { background-color: #ffc107 !important; color: #212529 !important; border-color: #e0a800 !important; }
+        #vencimiento-sistema.vence-urgente { background-color: #dc3545 !important; color: #fff !important; border-color: #b02a37 !important; }
+
     </style>
     {% block extra_css %}{% endblock %}
     <title>{% block title %}Gym{% endblock %}</title>
@@ -248,7 +335,7 @@
                         <li class="nav-item"><a class="nav-link" href="{% url 'historial_cajas' %}">Historial de caja</a></li>
                         <li class="nav-item ms-2"><a class="nav-link btn btn-pantalla" href="{% url 'pantalla_ingreso' %}">Pantalla de Ingreso</a></li>
                     </ul>
-                    <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
                         {% if gimnasio_actual %}
                             {% if caja_abierta %}
                             <span class="badge bg-success">✓ Caja abierta — {{ caja_abierta.usuario_apertura.usuario }}</span>
@@ -257,6 +344,30 @@
                             {% endif %}
                         {% endif %}
                         <span class="user-badge">{{ user.username }}</span>
+                        {% if user.is_superuser %}
+                        <form action="{% url 'toggle_sistema_pausa' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.path }}">
+                            {% if sistema_pausado %}
+                            <button type="submit" class="btn btn-sm btn-success fw-bold">DESPAUSAR</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-sm btn-warning fw-bold text-dark"
+                                    onclick="return confirm('¿Pausar el sistema? Solo Super Usuario podrá ingresar.');">PAUSA</button>
+                            {% endif %}
+                        </form>
+
+                        {% if pago_sistema_su %}
+                        <form action="{% url 'marcar_sistema_pagado' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.path }}">
+                            {% if pago_sistema_su.pagado %}
+                            <button type="button" class="btn btn-sm btn-success fw-bold" disabled>PAGADO</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-sm btn-danger fw-bold">IMPAGO</button>
+                            {% endif %}
+                        </form>
+                        {% endif %}
+                        {% endif %}
                         <a href="{% url 'logout' %}" class="btn btn-outline-light btn-sm">Cerrar sesión</a>
                     </div>
                     {% endif %}
@@ -265,6 +376,20 @@
         </nav>
     </header>
     <main class="py-4 px-2 px-md-3">
+
+        {% if user.is_authenticated and vencimiento_sistema %}
+        <div class="row justify-content-center mt-2 g-3 mb-3">
+            <div class="col-12 col-sm-10 col-md-6 col-lg-4">
+                <div id="vencimiento-sistema"
+                     data-vence="{{ vencimiento_sistema.iso }}"
+                     title="Control de pago el día 10 a las 23:59 hs Argentina">
+                    <i class="fas fa-clock me-1"></i>
+                    Pausa el {{ vencimiento_sistema.fecha_hora }}
+                    <span class="vencimiento-cuenta ms-1"></span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     {% block content %}{% endblock %}
     </main>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

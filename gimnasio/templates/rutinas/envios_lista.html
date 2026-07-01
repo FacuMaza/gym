@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0 fw-bold">Programación de envíos</h2>
+        <div class="d-flex gap-2">
+            <a href="{% url 'rutinas_lista' %}" class="btn btn-outline-secondary">Rutinas</a>
+            <a href="{% url 'envio_crear' %}" class="btn btn-success">+ Nueva programación</a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Rutina</th>
+                            <th>Frecuencia</th>
+                            <th>Último envío</th>
+                            <th>Activa</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in programaciones %}
+                        <tr>
+                            <td>{{ p.rutina.titulo }} <small class="text-muted">({{ p.rutina.categoria.nombre }})</small></td>
+                            <td>{{ p.get_frecuencia_display }}{% if p.frecuencia == 'semanal' and p.dias_semana %} · días {{ p.dias_semana }}{% endif %}{% if p.frecuencia == 'mensual' and p.dia_mes %} · día {{ p.dia_mes }}{% endif %}</td>
+                            <td>{% if p.ultimo_envio %}{{ p.ultimo_envio|date:"d/m/Y" }}{% else %}-{% endif %}</td>
+                            <td>{% if p.activa %}<span class="badge bg-success">Sí</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                            <td class="text-end">
+                                <a href="{% url 'envio_editar' p.pk %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                <a href="{% url 'envio_enviar' p.pk %}" class="btn btn-sm btn-primary">Enviar</a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">Sin programaciones.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

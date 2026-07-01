@@ -25,13 +25,13 @@
             text-align: center;
         }
         .titulo-bienvenida {
-            font-size: 2.5rem;
+            font-size: clamp(1.5rem, 6vw, 2.5rem);
             font-weight: 700;
             margin-bottom: 1.5rem;
             color: #38bdf8;
         }
         .input-dni {
-            font-size: 2rem;
+            font-size: clamp(1.25rem, 5vw, 2rem);
             padding: 1rem 1.5rem;
             text-align: center;
             border: 3px solid #38bdf8;
@@ -63,6 +63,14 @@
         .dias-clases { font-size: 1.5rem; margin-top: 1rem; font-weight: 600; line-height: 1.5; }
         .dias-clases .mes-vencido { color: #fca5a5; font-size: 1.65rem; font-weight: 700; display: block; margin-bottom: 0.5rem; }
         .dias-clases .clases-info { color: #e2e8f0; font-size: 1.25rem; }
+        .turno-info {
+            display: block;
+            margin-top: 1rem;
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #38bdf8;
+        }
+        .turno-info.sin-turno { color: #fcd34d; font-size: 1.15rem; }
         @media (max-width: 576px) {
             body { padding: 1rem; }
             .titulo-bienvenida { font-size: 1.75rem; }
@@ -122,10 +130,12 @@
             nombreSocio.textContent = `¡Bienvenido/a, ${data.nombre} ${data.apellido}!`;
             mensualidadInfo.textContent = `${data.tipo_mensualidad}${data.categoria ? ' - ' + data.categoria : ''}`;
 
-            const mesVencido = data.mes_vencido || data.dias_restantes === 0;
+            const mesVencido = data.pendiente_pago || data.mes_vencido || data.dias_restantes === 0;
             let html = '';
 
-            if (mesVencido) {
+            if (data.pendiente_pago) {
+                html += '<span class="mes-vencido">SOCIO PENDIENTE DE PAGO</span>';
+            } else if (mesVencido) {
                 let texto = 'MES VENCIDO';
                 const fechaStr = fechaVencimientoTexto(data.fecha_vencimiento);
                 if (fechaStr) texto += ` — venció el ${fechaStr}`;
@@ -136,6 +146,18 @@
                 html += `<span>Días restantes: ${data.dias_restantes}</span>`;
             } else if (!html) {
                 html = data.mensaje_vigencia || '';
+            }
+
+            if (data.usa_turnos) {
+                if (data.tiene_turno_hoy && data.turnos_hoy && data.turnos_hoy.length) {
+                    const turnosTxt = data.turnos_hoy.map(t => {
+                        const fin = t.hora_fin ? `–${t.hora_fin}` : '';
+                        return `${t.hora}${fin}`;
+                    }).join(' · ');
+                    html += `<span class="turno-info">TURNO HOY: ${turnosTxt}</span>`;
+                } else {
+                    html += '<span class="turno-info sin-turno">SIN TURNO RESERVADO HOY</span>';
+                }
             }
 
             diasClases.innerHTML = html;

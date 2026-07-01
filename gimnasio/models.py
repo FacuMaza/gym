@@ -1,11 +1,15 @@
 from django.db import models
 from django.utils import timezone
-from datetime import date
+from datetime import date, datetime, timedelta
 
 class CategoriaMensualidad(models.Model):
     """Categorías de planes de mensualidad, definidas por cada gimnasio."""
     gimnasio = models.ForeignKey('Gimnasio', on_delete=models.CASCADE, related_name='categorias_mensualidad', null=True, blank=True)
     nombre = models.CharField(max_length=100)
+    usa_turnos = models.BooleanField(
+        default=False,
+        help_text='Si está activo, los socios de esta categoría reservan turnos por día y hora.',
+    )
     
     def __str__(self):
         return self.nombre
@@ -92,6 +96,13 @@ class Usuario(models.Model):
 
 class Socio(models.Model):
     usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE)  # Enlace a la tabla de usuarios
+    auth_user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='socio_perfil',
+    )
     nombre = models.CharField(max_length=255)
     apellido = models.CharField(max_length=255)
     dni = models.CharField(max_length=20)  # Asumiendo que el DNI es una cadena
@@ -354,4 +365,175 @@ class RegistroIngreso(models.Model):
         db_table = 'Registro Ingresos'
         verbose_name = 'RegistroIngreso'
         verbose_name_plural = 'Registro Ingresos'
+
+
+class Rutina(models.Model):
+    gimnasio = models.ForeignKey(Gimnasio, on_delete=models.CASCADE, related_name='rutinas')
+    categoria = models.ForeignKey(CategoriaMensualidad, on_delete=models.CASCADE, related_name='rutinas')
+    titulo = models.CharField(max_length=200)
+    notas = models.TextField(blank=True)
+    creada = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.titulo
+
+    class Meta:
+        db_table = 'Rutinas'
+        verbose_name = 'Rutina'
+        verbose_name_plural = 'Rutinas'
+
+
+class EjercicioRutina(models.Model):
+    rutina = models.ForeignKey(Rutina, on_delete=models.CASCADE, related_name='ejercicios')
+    nombre = models.CharField(max_length=200)
+    series = models.PositiveIntegerField(default=3)
+    repeticiones = models.CharField(max_length=50, default='12')
+    peso = models.CharField(max_length=80, blank=True)
+    descanso = models.CharField(max_length=80, blank=True)
+    notas = models.TextField(blank=True)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'EjerciciosRutina'
+        ordering = ['orden', 'id']
+        verbose_name = 'Ejercicio de rutina'
+        verbose_name_plural = 'Ejercicios de rutina'
+
+    def __str__(self):
+        return self.nombre
+
+
+class ProgramacionEnvio(models.Model):
+    FRECUENCIA_CHOICES = [
+        ('diaria', 'Diaria'),
+        ('semanal', 'Semanal'),
+        ('mensual', 'Mensual'),
+    ]
+    gimnasio = models.ForeignKey(Gimnasio, on_delete=models.CASCADE, related_name='programaciones_rutina')
+    rutina = models.ForeignKey(Rutina, on_delete=models.CASCADE, related_name='programaciones')
+    frecuencia = models.CharField(max_length=20, choices=FRECUENCIA_CHOICES, default='semanal')
+    dias_semana = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text='Días 0-6 (lun-dom), separados por coma. Ej: 0,2,4',
+    )
+    dia_mes = models.PositiveSmallIntegerField(null=True, blank=True, help_text='Día del mes (1-31) si es mensual')
+    activa = models.BooleanField(default=True)
+    ultimo_envio = models.DateField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'ProgramacionesEnvioRutina'
+        verbose_name = 'Programación de envío'
+        verbose_name_plural = 'Programaciones de envío'
+
+    def __str__(self):
+        return f'{self.rutina.titulo} ({self.get_frecuencia_display()})'
+
+
+class RutinaEntregada(models.Model):
+    socio = models.ForeignKey(Socio, on_delete=models.CASCADE, related_name='rutinas_entregadas')
+    rutina = models.ForeignKey(Rutina, on_delete=models.CASCADE, related_name='entregas')
+    programacion = models.ForeignKey(
+        ProgramacionEnvio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='entregas',
+    )
+    fecha_publicacion = models.DateField(default=date.today)
+
+    class Meta:
+        db_table = 'RutinasEntregadas'
+        ordering = ['-fecha_publicacion', '-id']
+        verbose_name = 'Rutina entregada'
+        verbose_name_plural = 'Rutinas entregadas'
+        unique_together = [['socio', 'rutina', 'fecha_publicacion']]
+
+    def __str__(self):
+        return f'{self.rutina.titulo} → {self.socio} ({self.fecha_publicacion})'
+
+
+class HorarioTurno(models.Model):
+    """Franja horaria fija; una o más categorías comparten el mismo cupo."""
+    DIAS_SEMANA = [
+        (0, 'Lunes'),
+        (1, 'Martes'),
+        (2, 'Miércoles'),
+        (3, 'Jueves'),
+        (4, 'Viernes'),
+        (5, 'Sábado'),
+        (6, 'Domingo'),
+    ]
+    gimnasio = models.ForeignKey(Gimnasio, on_delete=models.CASCADE, related_name='horarios_turno')
+    categorias = models.ManyToManyField(CategoriaMensualidad, related_name='horarios_turno')
+    dia_semana = models.PositiveSmallIntegerField(choices=DIAS_SEMANA)
+    hora = models.TimeField()
+    cupo_maximo = models.PositiveIntegerField(default=12)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'HorariosTurno'
+        ordering = ['dia_semana', 'hora']
+        verbose_name = 'Horario de turno'
+        verbose_name_plural = 'Horarios de turno'
+        unique_together = [['gimnasio', 'dia_semana', 'hora']]
+
+    def __str__(self):
+        dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+        dia = dias[self.dia_semana] if self.dia_semana <= 6 else str(self.dia_semana)
+        cats = self.etiqueta_categorias()
+        return f'{cats} {dia} {self.hora.strftime("%H:%M")} (cupo {self.cupo_maximo})'
+
+    def etiqueta_categorias(self):
+        nombres = list(self.categorias.order_by('nombre').values_list('nombre', flat=True))
+        return ' + '.join(nombres) if nombres else '—'
+
+    @property
+    def hora_fin(self):
+        fin = datetime.combine(datetime.today(), self.hora) + timedelta(hours=1)
+        return fin.time()
+
+
+class ReservaTurno(models.Model):
+    socio = models.ForeignKey(Socio, on_delete=models.CASCADE, related_name='reservas_turno')
+    horario_turno = models.ForeignKey(HorarioTurno, on_delete=models.CASCADE, related_name='reservas')
+    fecha = models.DateField()
+    creada = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ReservasTurno'
+        ordering = ['fecha', 'horario_turno__hora']
+        verbose_name = 'Reserva de turno'
+        verbose_name_plural = 'Reservas de turno'
+        unique_together = [['socio', 'horario_turno', 'fecha']]
+
+    def __str__(self):
+        return f'{self.socio} — {self.horario_turno} ({self.fecha})'
+
+
+class EstadoAccesoSistema(models.Model):
+    """Interruptor global: pausa el ingreso de todos excepto Super Usuario."""
+    pausado = models.BooleanField(default=False)
+    pausado_en = models.DateTimeField(null=True, blank=True)
+    pausado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    pausado_por_vencimiento = models.BooleanField(default=False)
+    periodos_pagados = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Estado de acceso al sistema'
+        verbose_name_plural = 'Estado de acceso al sistema'
+
+    def __str__(self):
+        return 'Pausado' if self.pausado else 'Activo'
+
+    @classmethod
+    def get_estado(cls):
+        from django.db.utils import OperationalError, ProgrammingError
+        try:
+            obj, _ = cls.objects.get_or_create(pk=1, defaults={'pausado': False})
+            return obj
+        except (OperationalError, ProgrammingError):
+            return cls(pk=1, pausado=False)
 

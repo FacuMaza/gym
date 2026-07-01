@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 
 
 {% block content %}
@@ -27,11 +27,11 @@
 
             <div class="row g-3">
 
-                <div class="col-md-4"><strong>Fecha:</strong> {{ pago.fecha|date:"d/m/Y" }}</div>
+                <div class="col-12 col-md-4"><strong>Fecha:</strong> {{ pago.fecha|date:"d/m/Y" }}</div>
 
-                <div class="col-md-4"><strong>Monto pagado:</strong> $ {{ pago.monto|moneda_ar }}</div>
+                <div class="col-12 col-md-4"><strong>Monto pagado:</strong> $ {{ pago.monto|moneda_ar }}</div>
 
-                <div class="col-md-4"><strong>Desglose:</strong>
+                <div class="col-12 col-md-4"><strong>Desglose:</strong>
 
                     {% if pago.efectivo %}Efectivo $ {{ pago.efectivo|moneda_ar }}{% endif %}
 

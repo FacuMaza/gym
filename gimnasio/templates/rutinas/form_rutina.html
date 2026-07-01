@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-4">{{ titulo_pagina }}</h2>
+    <form method="post" id="form-rutina">
+        {% csrf_token %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">{{ form.categoria.label_tag }}{{ form.categoria }}</div>
+                    <div class="col-md-6">{{ form.titulo.label_tag }}{{ form.titulo }}</div>
+                    <div class="col-12">{{ form.notas.label_tag }}{{ form.notas }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h3 class="h5 fw-bold mb-0">Ejercicios</h3>
+            <button type="button" class="btn btn-sm btn-success" id="btn-agregar-ejercicio">+ Agregar ejercicio</button>
+        </div>
+        {{ formset.management_form }}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Series</th>
+                                <th>Reps</th>
+                                <th>Peso</th>
+                                <th>Descanso</th>
+                                <th>Notas</th>
+                                <th>Orden</th>
+                                <th style="width: 3rem;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="ejercicios-tbody">
+                            {% for f in formset %}
+                            <tr class="ejercicio-row{% if f.DELETE.value %} d-none{% endif %}">
+                                {% for field in f.hidden_fields %}{{ field }}{% endfor %}
+                                <td>{{ f.nombre }}</td>
+                                <td>{{ f.series }}</td>
+                                <td>{{ f.repeticiones }}</td>
+                                <td>{{ f.peso }}</td>
+                                <td>{{ f.descanso }}</td>
+                                <td>{{ f.notas }}</td>
+                                <td>{{ f.orden }}</td>
+                                <td class="text-center">
+                                    <span class="d-none">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
+                                    <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{% url 'rutinas_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<table class="d-none">
+    <tbody>
+        <tr class="ejercicio-row" id="ejercicio-template">
+            {% with f=formset.empty_form %}
+            {% for field in f.hidden_fields %}{{ field }}{% endfor %}
+            <td>{{ f.nombre }}</td>
+            <td>{{ f.series }}</td>
+            <td>{{ f.repeticiones }}</td>
+            <td>{{ f.peso }}</td>
+            <td>{{ f.descanso }}</td>
+            <td>{{ f.notas }}</td>
+            <td>{{ f.orden }}</td>
+            <td class="text-center">
+                <span class="d-none">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
+                <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
+            </td>
+            {% endwith %}
+        </tr>
+    </tbody>
+</table>
+
+<script>
+(function () {
+    const tbody = document.getElementById('ejercicios-tbody');
+    const totalInput = document.getElementById('id_ejercicios-TOTAL_FORMS');
+    const template = document.getElementById('ejercicio-template');
+    const prefix = 'ejercicios';
+
+    function reindexFormset() {
+        const rows = tbody.querySelectorAll('tr.ejercicio-row');
+        rows.forEach(function (row, index) {
+            row.querySelectorAll('input, select, textarea').forEach(function (el) {
+                if (el.name) {
+                    el.name = el.name.replace(new RegExp(prefix + '-\\d+-'), prefix + '-' + index + '-');
+                }
+                if (el.id) {
+                    el.id = el.id.replace(new RegExp('id_' + prefix + '-\\d+-'), 'id_' + prefix + '-' + index + '-');
+                }
+            });
+        });
+        totalInput.value = rows.length;
+    }
+
+    function addRow() {
+        const maxInput = document.getElementById('id_ejercicios-MAX_NUM_FORMS');
+        const index = parseInt(totalInput.value, 10);
+        if (maxInput && index >= parseInt(maxInput.value, 10)) {
+            alert('Máximo de 100 ejercicios por rutina.');
+            return;
+        }
+        const row = template.cloneNode(true);
+        row.id = '';
+        row.innerHTML = row.innerHTML.replace(/__prefix__/g, index);
+        tbody.appendChild(row);
+        totalInput.value = index + 1;
+    }
+
+    function removeRow(btn) {
+        const row = btn.closest('tr.ejercicio-row');
+        const idInput = row.querySelector('input[name$="-id"]');
+        const deleteInput = row.querySelector('input[name$="-DELETE"]');
+        if (idInput && idInput.value) {
+            if (deleteInput) {
+                deleteInput.checked = true;
+            }
+            row.classList.add('d-none');
+        } else {
+            row.remove();
+            reindexFormset();
+        }
+    }
+
+    document.getElementById('btn-agregar-ejercicio').addEventListener('click', addRow);
+    tbody.addEventListener('click', function (e) {
+        if (e.target.closest('.btn-quitar-ejercicio')) {
+            removeRow(e.target.closest('.btn-quitar-ejercicio'));
+        }
+    });
+})();
+</script>
+{% endblock %}

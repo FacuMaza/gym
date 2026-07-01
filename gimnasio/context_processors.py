@@ -1,6 +1,43 @@
 from .models import Caja, Gimnasio, UsuarioGimnasio, Usuario
 
 
+def sistema_pausado(request):
+    try:
+        from .models import EstadoAccesoSistema
+        return {'sistema_pausado': EstadoAccesoSistema.get_estado().pausado}
+    except Exception:
+        return {'sistema_pausado': False}
+
+
+def vencimiento_sistema(request):
+    if not getattr(request, 'user', None) or not request.user.is_authenticated:
+        return {}
+    from .sistema_vencimiento import (
+        info_vencimiento_sistema, debe_mostrar_aviso_vencimiento, periodo_actual_pagado,
+    )
+    from .models import EstadoAccesoSistema
+    if not debe_mostrar_aviso_vencimiento():
+        return {}
+    if periodo_actual_pagado(EstadoAccesoSistema.get_estado().periodos_pagados):
+        return {}
+    return {'vencimiento_sistema': info_vencimiento_sistema()}
+
+
+def pago_sistema_su(request):
+    if not getattr(request, 'user', None) or not request.user.is_authenticated:
+        return {}
+    if not request.user.is_superuser:
+        return {}
+    from .sistema_vencimiento import debe_mostrar_aviso_vencimiento, periodo_actual_pagado
+    from .models import EstadoAccesoSistema
+    estado = EstadoAccesoSistema.get_estado()
+    en_ventana = debe_mostrar_aviso_vencimiento()
+    pausado_impago = estado.pausado and estado.pausado_por_vencimiento
+    if not en_ventana and not pausado_impago:
+        return {}
+    return {'pago_sistema_su': {'pagado': periodo_actual_pagado(estado.periodos_pagados)}}
+
+
 def gimnasio_context(request):
     """Añade gimnasio_actual y gimnasios_disponibles al contexto."""
     context = {}
@@ -35,7 +72,6 @@ def gimnasio_context(request):
     else:
         context['gimnasio_actual'] = None
 
-    # Caja abierta para el gimnasio actual (siempre consultar)
     gym = context.get('gimnasio_actual')
     if gym:
         caja = Caja.objects.filter(gimnasio=gym, fecha_cierre__isnull=True).select_related('usuario_apertura').first()
@@ -44,6 +80,7 @@ def gimnasio_context(request):
         context['puede_operar_caja'] = usuario_puede_operar_caja(request, caja)
     else:
         context['caja_abierta'] = None
-        context['puede_operar_caja'] = False
+        from .views import usuario_puede_operar_caja
+        context['puede_operar_caja'] = usuario_puede_operar_caja(request, None)
 
     return context

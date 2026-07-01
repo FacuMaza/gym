@@ -8,7 +8,8 @@
                 <div class="mb-3">
                     <a href="{% url 'tipo_usuario_create' %}" class="btn btn-success">Crear Nuevo Tipo de Usuario</a>
                 </div>
-                <table class="table table-striped">
+                <div class="table-responsive">
+                <table class="table table-striped mb-0">
                     <thead>
                         <tr>
                             <th>Tipo de Usuario</th>
@@ -27,6 +28,7 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     </div>

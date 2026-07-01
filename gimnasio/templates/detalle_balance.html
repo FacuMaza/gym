@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block content %}
 <div class="container page-container py-4">
     <div class="card border-0 shadow-sm">
@@ -42,9 +42,9 @@
 
             <h5 class="mb-3">Resumen de ingresos por forma de pago</h5>
             <div class="row mb-4">
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Efectivo:</strong> $ {{ ef_ing|moneda_ar }}</div></div>
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Transferencia:</strong> $ {{ tr_ing|moneda_ar }}</div></div>
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Tarjeta:</strong> $ {{ tc_ing|moneda_ar }}</div></div>
+                <div class="col-12 col-sm-6 col-md-4"><div class="p-3 bg-light rounded"><strong>Efectivo:</strong> $ {{ ef_ing|moneda_ar }}</div></div>
+                <div class="col-12 col-sm-6 col-md-4"><div class="p-3 bg-light rounded"><strong>Transferencia:</strong> $ {{ tr_ing|moneda_ar }}</div></div>
+                <div class="col-12 col-md-4"><div class="p-3 bg-light rounded"><strong>Tarjeta:</strong> $ {{ tc_ing|moneda_ar }}</div></div>
             </div>
 
             <h5 class="mb-3">Egresos</h5>
@@ -72,9 +72,9 @@
 
             <h5 class="mb-3">Egresos por forma de pago</h5>
             <div class="row mb-4">
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Efectivo:</strong> $ {{ ef_egr|moneda_ar }}</div></div>
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Transferencia:</strong> $ {{ tr_egr|moneda_ar }}</div></div>
-                <div class="col-md-4"><div class="p-3 bg-light rounded"><strong>Tarjeta:</strong> $ {{ tc_egr|moneda_ar }}</div></div>
+                <div class="col-12 col-sm-6 col-md-4"><div class="p-3 bg-light rounded"><strong>Efectivo:</strong> $ {{ ef_egr|moneda_ar }}</div></div>
+                <div class="col-12 col-sm-6 col-md-4"><div class="p-3 bg-light rounded"><strong>Transferencia:</strong> $ {{ tr_egr|moneda_ar }}</div></div>
+                <div class="col-12 col-md-4"><div class="p-3 bg-light rounded"><strong>Tarjeta:</strong> $ {{ tc_egr|moneda_ar }}</div></div>
             </div>
             {% if egresos_sin_fp > 0 %}
             <p class="text-muted">Egresos (sin forma de pago): $ {{ egresos_sin_fp|moneda_ar }}</p>

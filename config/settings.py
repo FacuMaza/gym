@@ -36,6 +36,8 @@ DEBUG = os.environ.get('DEBUG', '1') == '1'
 
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '*').split(',') if host.strip()]
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if origin.strip()]
+# URL pública para QR (producción). Ej: https://tudominio.com
+PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip() or None
 
 
 # Application definition
@@ -63,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'gimnasio.middleware.SistemaPausadoMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -82,6 +85,9 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'gimnasio.context_processors.gimnasio_context',
+                'gimnasio.context_processors.sistema_pausado',
+                'gimnasio.context_processors.vencimiento_sistema',
+                'gimnasio.context_processors.pago_sistema_su',
             ],
         },
     },

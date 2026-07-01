@@ -5,9 +5,9 @@
     <div class="card">
         <div class="card-body">
             <h2 class="card-title text-center">Detalle de Ingresos del día: {{ fecha }}</h2>
-            <div class="table-container">
+            <div class="table-responsive">
                 {% if ingresos %}
-                    <table class="table table-striped">
+                    <table class="table table-striped mb-0">
                         <thead>
                             <tr>
                                 <th>Nombre</th>
@@ -27,7 +27,9 @@
                                 <td>{{ ingreso.dni }}</td>
                                 <td>{{ ingreso.fecha_ingreso|date:"H:i" }}</td>
                                 <td>
-                                    {% if ingreso.vencido %}
+                                    {% if ingreso.pendiente_pago %}
+                                        <span class="text-danger fw-bold">SOCIO PENDIENTE DE PAGO</span>
+                                    {% elif ingreso.vencido %}
                                         <span class="text-danger fw-bold">MES VENCIDO</span>
                                         <small class="text-danger d-block">Venció el {{ ingreso.fecha_vencimiento|date:"d/m/Y" }}</small>
                                     {% elif ingreso.fecha_vencimiento %}

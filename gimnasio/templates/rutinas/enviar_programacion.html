@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-3">Enviar ahora</h2>
+    <p>Publicar <strong>{{ programacion.rutina.titulo }}</strong> según programación {{ programacion.get_frecuencia_display }}.</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Enviar</button>
+        <a href="{% url 'envios_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
+    </form>
+</div>
+{% endblock %}

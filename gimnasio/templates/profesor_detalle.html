@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% load l10n %}
 {% block content %}
 <div class="container page-container py-4">
@@ -7,7 +7,7 @@
             <h2 class="mb-0 fw-bold">{{ profesor.nombre }} {{ profesor.apellido }}</h2>
             {% if profesor.telefono %}<p class="text-muted mb-0">{{ profesor.telefono }}</p>{% endif %}
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
             <a href="{% url 'profesor_editar' profesor.pk %}" class="btn btn-outline-primary">Editar</a>
             <a href="{% url 'venta_crear' %}?profesor={{ profesor.pk }}" class="btn btn-success">+ Cargar venta</a>
             <a href="{% url 'profesor_list' %}" class="btn btn-outline-secondary">Volver</a>
@@ -22,15 +22,15 @@
         <div class="card-body">
             <p class="text-muted small mb-3">Sueldo bruto − adelantos − productos cargados = lo que le tenés que pagar.</p>
             <div class="row g-3 align-items-center">
-                <div class="col-md-4">
+                <div class="col-12 col-md-4">
                     <label class="form-label mb-1">Sueldo bruto ($)</label>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex flex-wrap gap-2">
                         <input type="number" id="input-sueldo" class="form-control form-control-lg" step="0.01" min="0" placeholder="0" value="">
                         <button type="button" id="btn-calcular" class="btn btn-primary">Calcular</button>
                         <button type="button" id="btn-limpiar" class="btn btn-outline-secondary">Limpiar</button>
                     </div>
                 </div>
-                <div class="col-md-8">
+                <div class="col-12 col-md-8">
                     <div class="bg-light rounded p-3">
                         <div class="mb-2 small">Sueldo $<span id="display-sueldo">0</span> − Adelantos ${{ total_adelantos|moneda_ar }} − Productos ${{ total_ventas_profesor|moneda_ar }}</div>
                         <div class="d-flex align-items-center gap-2">
@@ -50,21 +50,21 @@
         </div>
         <div class="card-body">
             <p class="text-muted small mb-3">Cuando el profesor te paga (o cuando vos le pagás el sueldo), registrá el monto acá. Si usaste el calculador, hacé clic en "Calcular" y el total se carga automáticamente.</p>
-            {% if caja_abierta %}
+            {% if puede_operar_caja %}
             <form method="post" class="row g-3" id="form-pago-profesor">
                 {% csrf_token %}
                 <input type="hidden" name="accion" value="pagar">
-                <div class="col-md-3">
+                <div class="col-12 col-md-3">
                     <label class="form-label">Monto a pagar ($)</label>
                     {{ form_pago.monto }}
                     {% for err in form_pago.monto.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                 </div>
-                <div class="col-md-3">
+                <div class="col-12 col-md-3">
                     <label class="form-label">Forma de pago</label>
                     {{ form_pago.metodo_pago }}
                     {% for err in form_pago.metodo_pago.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                 </div>
-                <div class="col-md-4 d-none" id="div-titular-pago">
+                <div class="col-12 col-md-4 d-none" id="div-titular-pago">
                     <label class="form-label">Titular</label>
                     {{ form_pago.nombre_titular }}
                     {% for err in form_pago.nombre_titular.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
@@ -98,9 +98,9 @@
 
     <div class="row">
         <!-- Productos vendidos al profesor -->
-        <div class="col-lg-6 mb-4">
+        <div class="col-12 col-lg-6 mb-4">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0">Productos vendidos (cargos a cuenta)</h5>
                     <span class="badge bg-secondary">Total: $ {{ total_ventas_profesor|moneda_ar }}</span>
                 </div>
@@ -135,9 +135,9 @@
         </div>
 
         <!-- Adelantos (formulario inline) -->
-        <div class="col-lg-6 mb-4">
+        <div class="col-12 col-lg-6 mb-4">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0">Adelantos</h5>
                     <span class="badge bg-warning text-dark">Total: $ {{ total_adelantos|moneda_ar }}</span>
                 </div>
@@ -146,15 +146,15 @@
                         {% csrf_token %}
                         <input type="hidden" name="accion" value="adelanto">
                         {{ form_adelanto.fecha }}
-                        <div class="col-5">
+                        <div class="col-12 col-sm-5">
                             <label class="form-label small">Monto</label>
                             {{ form_adelanto.monto }}
                         </div>
-                        <div class="col-5">
+                        <div class="col-12 col-sm-5">
                             <label class="form-label small">Descripción</label>
                             {{ form_adelanto.descripcion }}
                         </div>
-                        <div class="col-auto">
+                        <div class="col-12 col-sm-auto">
                             <button type="submit" class="btn btn-warning btn-sm">Agregar</button>
                         </div>
                     </form>
@@ -185,7 +185,7 @@
 
     <!-- Pagos registrados al profesor -->
     <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
             <h5 class="mb-0">Pagos registrados al profesor</h5>
             <span class="badge bg-success">Total: $ {{ total_pagos|moneda_ar }}</span>
         </div>

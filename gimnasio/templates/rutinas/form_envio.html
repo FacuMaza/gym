@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-4">{{ titulo_pagina }}</h2>
+    <form method="post">
+        {% csrf_token %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">{{ form.rutina.label_tag }}{{ form.rutina }}</div>
+                    <div class="col-md-6">{{ form.frecuencia.label_tag }}{{ form.frecuencia }}</div>
+                    <div class="col-md-6">{{ form.dia_mes.label_tag }}{{ form.dia_mes }}</div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">{{ form.activa }} {{ form.activa.label_tag }}</div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">{{ form.dias_semana.label }}</label>
+                        <div class="d-flex flex-wrap gap-3">{{ form.dias_semana }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{% url 'envios_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

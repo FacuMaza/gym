@@ -8,15 +8,37 @@
 
     <form method="get" class="card p-4 mb-4 shadow-sm">
         <div class="row g-3 align-items-end">
-            <div class="col-12 col-md-4">
+            <div class="col-12 col-md-3">
                 <label class="form-label">Fecha</label>
                 <input type="date" name="fecha" id="input-fecha" class="form-control" value="{{ fecha }}">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label">Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option value="">Todas</option>
+                    {% for cat in categorias_filtro %}
+                    <option value="{{ cat.pk }}" {% if categoria_filtro == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.nombre }}</option>
+                    {% endfor %}
+                    {% if conteo_sin_categoria %}<option value="sin" {% if categoria_filtro == "sin" %}selected{% endif %}>Sin categoría</option>{% endif %}
+                </select>
             </div>
             <div class="col-12 col-md-2">
                 <button type="submit" class="btn btn-primary">Ver ingresos</button>
             </div>
         </div>
     </form>
+
+    {% if total_ingresos %}
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+        <span class="badge bg-dark fs-6">Total: {{ total_ingresos }} ingreso{{ total_ingresos|pluralize }}</span>
+        {% for item in conteo_por_categoria %}
+        <span class="badge bg-secondary">{{ item.nombre }}: {{ item.cantidad }}</span>
+        {% endfor %}
+        {% if conteo_sin_categoria %}
+        <span class="badge bg-light text-dark border">Sin categoría: {{ conteo_sin_categoria }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-light py-3">
@@ -35,6 +57,7 @@
                             <th>Hora de ingreso</th>
                             <th>Vencimiento</th>
                             <th>Clases restantes</th>
+                            <th>Categoría</th>
                             <th>Plan</th>
                         </tr>
                     </thead>
@@ -46,7 +69,9 @@
                             <td>{{ ingreso.dni }}</td>
                             <td>{{ ingreso.fecha_ingreso|date:"H:i" }}</td>
                             <td>
-                                {% if ingreso.vencido %}
+                                {% if ingreso.pendiente_pago %}
+                                    <span class="text-danger fw-bold">SOCIO PENDIENTE DE PAGO</span>
+                                {% elif ingreso.vencido %}
                                     <span class="text-danger fw-bold">MES VENCIDO</span>
                                     <small class="text-danger d-block">Venció el {{ ingreso.fecha_vencimiento|date:"d/m/Y" }}</small>
                                 {% elif ingreso.fecha_vencimiento %}
@@ -58,6 +83,13 @@
                             <td>
                                 {% if ingreso.clases_restantes is not None %}
                                     <span class="badge bg-info">{{ ingreso.clases_restantes }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if ingreso.categoria and ingreso.categoria != "-" %}
+                                    <span class="badge bg-info text-dark">{{ ingreso.categoria }}</span>
                                 {% else %}
                                     <span class="text-muted">-</span>
                                 {% endif %}

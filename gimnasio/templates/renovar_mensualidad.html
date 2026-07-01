@@ -4,20 +4,10 @@
         <div class="card">
             <div class="card-body">
                 <h2 class="card-title">Renovar Mensualidad de {{ socio.nombre }} {{ socio.apellido }}</h2>
-                <p style="font-size: 1.1rem;">¿Qué tipo de renovación deseas realizar?</p>
-                   <div class="table-container">
-                    <table class="table">
-                     <tbody>
-                        <tr>
-                           <td>
-                               <div class="spaced-buttons">
-                                   <button class="btn btn-primary btn-sm" onclick="confirmarRenovacion()">Renovar Automático</button>
-                                   <a href="{% url 'lista_cuotas' %}" class="btn btn-secondary btn-sm">Cancelar</a>
-                                </div>
-                           </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                <p class="fs-5 mb-4">¿Qué tipo de renovación deseas realizar?</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-primary" onclick="confirmarRenovacion()">Renovar Automático</button>
+                    <a href="{% url 'lista_cuotas' %}" class="btn btn-secondary">Cancelar</a>
                 </div>
            </div>
         </div>

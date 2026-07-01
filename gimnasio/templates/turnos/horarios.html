@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="fw-bold mb-1">Horarios — {{ combinacion_etiqueta }}</h2>
+            <p class="text-muted mb-0">Clases de 1 hora. Los cupos se comparten entre las categorías de la combinación.</p>
+        </div>
+        <a href="{% url 'turnos_index' %}" class="btn btn-outline-secondary">Volver a turnos</a>
+    </div>
+
+    <div class="alert alert-info py-2 mb-4">
+        <strong>Combinación activa:</strong> {{ combinacion_etiqueta }}.
+        {% if categorias_combinacion|length > 1 %}
+        Los socios de cualquiera de estas categorías comparten el mismo cupo en cada horario.
+        {% endif %}
+        <a href="{% url 'turnos_index' %}" class="alert-link ms-1">Cambiar combinación</a>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header fw-bold">Agregar horarios</div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3 align-items-end">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label">{{ form.dia_desde.label }}</label>
+                        {{ form.dia_desde }}
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label">{{ form.dia_hasta.label }}</label>
+                        {{ form.dia_hasta }}
+                    </div>
+                    <div class="col-6 col-md-2">
+                        {{ form.hora_desde.label_tag }}{{ form.hora_desde }}
+                    </div>
+                    <div class="col-6 col-md-2">
+                        {{ form.hora_hasta.label_tag }}{{ form.hora_hasta }}
+                    </div>
+                    <div class="col-6 col-md-1">{{ form.cupo_maximo.label_tag }}{{ form.cupo_maximo }}</div>
+                    <div class="col-6 col-md-1">
+                        <div class="form-check mt-4">{{ form.activo }} {{ form.activo.label_tag }}</div>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="submit" class="btn btn-success w-100">+ Agregar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span class="fw-bold">Horarios cargados</span>
+            {% if horarios %}
+            <form method="post" class="mb-0" onsubmit="return confirm('¿Eliminar los {{ horarios|length }} horario(s) de «{{ combinacion_etiqueta }}»? Esta acción no se puede deshacer.');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="eliminar_todos">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar todos</button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Categorías</th>
+                            <th>Día</th>
+                            <th>Clase (1 h)</th>
+                            <th>Cupo</th>
+                            <th>Activo</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in horarios %}
+                        <tr>
+                            <td><span class="badge bg-info text-dark">{{ h.etiqueta_categorias }}</span></td>
+                            <td>{{ h.get_dia_semana_display }}</td>
+                            <td>{{ h.hora|time:"H:i" }} – {{ h.hora_fin|time:"H:i" }}</td>
+                            <td>{{ h.cupo_maximo }}</td>
+                            <td>{% if h.activo %}<span class="badge bg-success">Sí</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                            <td class="text-end">
+                                <a href="{% url 'turnos_horario_editar' h.pk %}?cat={{ categoria.pk }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                <form method="post" class="d-inline" onsubmit="return confirm('¿Eliminar este horario?');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="eliminar">
+                                    <input type="hidden" name="horario_id" value="{{ h.pk }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">Sin horarios. Agregá el primero arriba.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,8 +1,8 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
 <div class="container page-container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Reporte {{ periodo|title }}</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0">Reporte {{ periodo|title }}</h2>
         <a href="{% url 'historiales_index' %}" class="btn btn-outline-secondary">Cambiar período</a>
     </div>
 
@@ -11,7 +11,7 @@
         <input type="hidden" name="fecha" value="{{ fecha }}">
         <input type="hidden" name="mes" value="{{ mes }}">
         <input type="hidden" name="anio" value="{{ anio }}">
-        <select name="gimnasio" class="form-select" style="max-width:250px" onchange="this.form.submit()">
+        <select name="gimnasio" class="form-select w-100" style="max-width:min(320px,100%)" onchange="this.form.submit()">
             {% for g in gimnasios %}
             <option value="{{ g.id }}" {% if gimnasio_seleccionado and gimnasio_seleccionado.id == g.id %}selected{% endif %}>
                 {{ g.nombre|default:g.direccion|default:"Gimnasio" }}
@@ -27,39 +27,45 @@
             <small>{{ rep.inicio|date:"d/m/Y" }} {% if rep.inicio != rep.fin %} - {{ rep.fin|date:"d/m/Y" }}{% endif %}</small>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
                     <h6 class="text-success">Ingresos - Mensualidades</h6>
-                    <table class="table table-sm">
+                    <div class="table-responsive">
+                    <table class="table table-sm mb-0">
                         <tr><td>Efectivo</td><td class="text-end">$ {{ rep.mensualidades.efectivo|moneda_ar }}</td></tr>
                         <tr><td>Transferencia</td><td class="text-end">$ {{ rep.mensualidades.transferencia|moneda_ar }}</td></tr>
                         <tr><td>Tarjeta de Crédito</td><td class="text-end">$ {{ rep.mensualidades.tarjeta|moneda_ar }}</td></tr>
                         <tr class="fw-bold"><td>Total</td><td class="text-end">$ {{ rep.mensualidades.total|moneda_ar }}</td></tr>
                     </table>
+                    </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-12 col-md-6">
                     <h6 class="text-success">Ingresos - Ventas de productos</h6>
-                    <table class="table table-sm">
+                    <div class="table-responsive">
+                    <table class="table table-sm mb-0">
                         <tr><td>Efectivo</td><td class="text-end">$ {{ rep.ventas.efectivo|moneda_ar }}</td></tr>
                         <tr><td>Transferencia</td><td class="text-end">$ {{ rep.ventas.transferencia|moneda_ar }}</td></tr>
                         <tr><td>Tarjeta de Crédito</td><td class="text-end">$ {{ rep.ventas.tarjeta|moneda_ar }}</td></tr>
                         <tr class="fw-bold"><td>Total</td><td class="text-end">$ {{ rep.ventas.total|moneda_ar }}</td></tr>
                     </table>
+                    </div>
                 </div>
             </div>
             <hr>
-            <div class="row">
-                <div class="col-md-6">
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
                     <h6 class="text-danger">Gastos</h6>
                     <p class="mb-0"><strong>$ {{ rep.gastos|moneda_ar }}</strong></p>
                 </div>
-                <div class="col-md-6">
+                <div class="col-12 col-md-6">
                     <h6>Resumen</h6>
-                    <table class="table table-sm">
+                    <div class="table-responsive">
+                    <table class="table table-sm mb-0">
                         <tr><td>Total ingresos</td><td class="text-end text-success">$ {{ rep.total_ingresos|moneda_ar }}</td></tr>
                         <tr><td>Total gastos</td><td class="text-end text-danger">$ {{ rep.gastos|moneda_ar }}</td></tr>
                         <tr class="fw-bold"><td>Balance</td><td class="text-end {% if rep.balance >= 0 %}text-success{% else %}text-danger{% endif %}">$ {{ rep.balance|moneda_ar }}</td></tr>
                     </table>
+                    </div>
                 </div>
             </div>
         </div>

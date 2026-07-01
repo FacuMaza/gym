@@ -1,10 +1,14 @@
 from django.urls import path
 from gimnasio import views
+from gimnasio import views_rutinas, views_socio, views_turnos
 
 urlpatterns = [
     path('', views.index, name="index"),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('sistema-pausado/', views.sistema_pausado, name='sistema_pausado'),
+    path('sistema-pausa/toggle/', views.toggle_sistema_pausa, name='toggle_sistema_pausa'),
+    path('sistema-pausa/pagado/', views.marcar_sistema_pagado, name='marcar_sistema_pagado'),
     path('set-gimnasio/<int:gimnasio_id>/', views.set_gimnasio_actual, name='set_gimnasio_actual'),
 
     ##SOCIOS
@@ -110,4 +114,30 @@ urlpatterns = [
     ## Pantalla de ingreso (kiosco)
     path('pantalla-ingreso/', views.pantalla_ingreso, name='pantalla_ingreso'),
     path('pantalla-ingreso/kiosk/', views.pantalla_ingreso_kiosk, name='pantalla_ingreso_kiosk'),
+
+    ## Portal socios
+    path('socio/login/', views_socio.socio_login, name='socio_login'),
+    path('socio/portal/', views_socio.socio_portal, name='socio_portal'),
+    path('socio/portal/reservar/', views_socio.socio_reservar_turno, name='socio_reservar_turno'),
+    path('socio/portal/cancelar/<int:pk>/', views_socio.socio_cancelar_turno, name='socio_cancelar_turno'),
+    path('socio/logout/', views_socio.socio_logout, name='socio_logout'),
+    path('socio/qr/', views_socio.socio_qr_info, name='socio_qr_info'),
+    path('socio/qr/imprimir/', views_socio.socio_qr_imprimir, name='socio_qr_imprimir'),
+
+    ## Rutinas
+    path('rutinas/', views_rutinas.rutinas_lista, name='rutinas_lista'),
+    path('rutinas/nueva/', views_rutinas.rutina_crear, name='rutina_crear'),
+    path('rutinas/<int:pk>/editar/', views_rutinas.rutina_editar, name='rutina_editar'),
+    path('rutinas/<int:pk>/eliminar/', views_rutinas.rutina_eliminar, name='rutina_eliminar'),
+    path('rutinas/<int:pk>/enviar/', views_rutinas.rutina_enviar, name='rutina_enviar'),
+    path('rutinas/envios/', views_rutinas.envios_lista, name='envios_lista'),
+    path('rutinas/envios/nueva/', views_rutinas.envio_crear, name='envio_crear'),
+    path('rutinas/envios/<int:pk>/editar/', views_rutinas.envio_editar, name='envio_editar'),
+    path('rutinas/envios/<int:pk>/enviar/', views_rutinas.envio_enviar, name='envio_enviar'),
+
+    ## Turnos
+    path('turnos/', views_turnos.turnos_index, name='turnos_index'),
+    path('turnos/categoria/<int:categoria_id>/', views_turnos.turnos_horarios, name='turnos_horarios'),
+    path('turnos/categoria/<int:categoria_id>/reservas/', views_turnos.turnos_reservas, name='turnos_reservas'),
+    path('turnos/horario/<int:pk>/editar/', views_turnos.turnos_horario_editar, name='turnos_horario_editar'),
 ]

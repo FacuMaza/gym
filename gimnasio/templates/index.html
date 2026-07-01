@@ -16,6 +16,8 @@
         <div class="card-body">
           <div class="d-grid gap-2">
             <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'lista_socios' %}" class="btn btn-outline-primary">Socios</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'rutinas_lista' %}" class="btn btn-outline-primary">Rutinas</a>
+            <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'turnos_index' %}" class="btn btn-outline-primary">Turnos</a>
             <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'lista_tipos_mensualidad' %}" class="btn btn-outline-primary">Agregar mensualidades</a>
             <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'listado_ingresos' %}" class="btn btn-outline-primary">Ingresos</a>
             <a href="{% url 'set_gimnasio_actual' g.id %}?next={% url 'producto_list' %}" class="btn btn-outline-primary">Stock</a>

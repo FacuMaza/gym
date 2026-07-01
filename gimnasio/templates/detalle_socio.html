@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% block content %}
 <div class="container page-container container-narrow py-4">
@@ -6,7 +6,7 @@
         <div class="card-body">
             <h2 class="card-title mb-1">Detalles del Socio</h2>
             <h4 class="mb-4 text-muted">{{ socio.nombre }} {{ socio.apellido }}</h4>
-            <table class="table table-striped mb-0">
+            <table class="table table-striped mb-0 table-detail-stack">
                 <tbody>
                     <tr>
                         <th>Nombre</th>

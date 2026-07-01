@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-3">Eliminar rutina</h2>
+    <p>¿Eliminar <strong>{{ rutina.titulo }}</strong>?</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Eliminar</button>
+        <a href="{% url 'rutinas_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
+    </form>
+</div>
+{% endblock %}

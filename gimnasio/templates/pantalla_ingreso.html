@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% load static %}
 {% block content %}
 <div class="container page-container py-4 py-md-5">
@@ -16,7 +16,9 @@
 function abrirPantalla() {
     const gymId = '{{ gimnasio_actual.id|default:"" }}';
     const url = "{% url 'pantalla_ingreso_kiosk' %}" + (gymId ? '?gym=' + gymId : '');
-    window.open(url, 'pantallaIngreso', 'width=900,height=700,scrollbars=no,resizable=yes');
+    var w = Math.min(900, window.screen.availWidth || 900);
+    var h = Math.min(700, window.screen.availHeight || 700);
+    window.open(url, 'pantallaIngreso', 'width=' + w + ',height=' + h + ',left=0,top=0,scrollbars=no,resizable=yes');
 }
 </script>
 {% endblock %}

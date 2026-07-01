@@ -8,13 +8,41 @@
     </div>
 
     <form method="get" class="mb-3">
-        <div class="input-group w-100" style="max-width: min(380px, 100%);">
-            <span class="input-group-text bg-light">🔍</span>
-            <input type="text" name="q" class="form-control" placeholder="Buscar por DNI, nombre o apellido..." value="{{ q_buscar }}">
-            <button type="submit" class="btn btn-primary">Buscar</button>
-            {% if q_buscar %}<a href="{% url 'lista_socios' %}" class="btn btn-outline-secondary">Limpiar</a>{% endif %}
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-5">
+                <div class="input-group w-100">
+                    <span class="input-group-text bg-light">🔍</span>
+                    <input type="text" name="q" class="form-control" placeholder="Buscar por DNI, nombre o apellido..." value="{{ q_buscar }}">
+                </div>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small text-muted mb-1">Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option value="">Todas</option>
+                    {% for cat in categorias_filtro %}
+                    <option value="{{ cat.pk }}" {% if categoria_filtro == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.nombre }}</option>
+                    {% endfor %}
+                    {% if conteo_sin_categoria %}<option value="sin" {% if categoria_filtro == "sin" %}selected{% endif %}>Sin categoría</option>{% endif %}
+                </select>
+            </div>
+            <div class="col-12 col-md-auto d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                {% if q_buscar or categoria_filtro %}<a href="{% url 'lista_socios' %}" class="btn btn-outline-secondary">Limpiar</a>{% endif %}
+            </div>
         </div>
     </form>
+
+    {% if total_socios_gym %}
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+        <span class="badge bg-dark fs-6">Total: {{ total_socios_gym }} socio{{ total_socios_gym|pluralize }}</span>
+        {% for item in conteo_por_categoria %}
+        <span class="badge bg-secondary">{{ item.nombre }}: {{ item.cantidad }}</span>
+        {% endfor %}
+        {% if conteo_sin_categoria %}
+        <span class="badge bg-light text-dark border">Sin categoría: {{ conteo_sin_categoria }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
@@ -27,6 +55,7 @@
                             <th>Celular</th>
                             <th>Inicio mensualidad</th>
                             <th>Vencimiento</th>
+                            <th>Categoría</th>
                             <th>Plan</th>
                             <th class="text-end">Acciones</th>
                         </tr>
@@ -52,6 +81,13 @@
                             <td>
                                 {% if socio.fecha_vencimiento %}
                                     {{ socio.fecha_vencimiento|date:"d/m/Y" }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if socio.tipo_mensualidad %}
+                                    <span class="badge bg-info text-dark">{{ socio|categoria_socio }}</span>
                                 {% else %}
                                     <span class="text-muted">-</span>
                                 {% endif %}
@@ -99,7 +135,7 @@
                         </div>
                         {% empty %}
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="8" class="text-center text-muted py-4">
                                 {% if q_buscar %}No se encontraron socios para "{{ q_buscar }}".{% else %}No hay socios. Agregá uno para comenzar.{% endif %}
                             </td>
                         </tr>

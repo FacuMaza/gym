@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
 <div class="container page-container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -14,13 +14,13 @@
 
     <form method="get" class="mb-3">
         <div class="row g-2 align-items-end">
-            <div class="col-auto flex-grow-1" style="max-width: 280px;">
-                <div class="input-group">
+            <div class="col-12 col-sm-6 col-lg-4">
+                <div class="input-group w-100">
                     <span class="input-group-text bg-light">🔍</span>
                     <input type="text" name="q" class="form-control" placeholder="Buscar por producto..." value="{{ q_buscar }}">
                 </div>
             </div>
-            <div class="col-auto" style="min-width: 180px;">
+            <div class="col-12 col-sm-6 col-lg-4">
                 <label class="form-label small mb-0">Filtrar por profesor</label>
                 <select name="profesor" class="form-select form-select-sm">
                     <option value="">Todos</option>
@@ -29,7 +29,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-auto">
+            <div class="col-12 col-lg-auto d-flex flex-wrap gap-2">
                 <button type="submit" class="btn btn-primary">Buscar</button>
                 {% if q_buscar or filtro_profesor %}<a href="{% url 'venta_list' %}" class="btn btn-outline-secondary">Limpiar</a>{% endif %}
             </div>

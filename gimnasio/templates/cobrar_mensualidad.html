@@ -42,15 +42,15 @@
                         {% csrf_token %}
                         <label class="form-label fw-semibold mb-3">Formas de pago (podés dividir en efectivo + transferencia + tarjeta)</label>
                         <div class="row g-3 mb-3">
-                            <div class="col-md-4">
+                            <div class="col-12 col-md-4">
                                 <label class="form-label">💵 Efectivo ($)</label>
                                 <input type="number" name="efectivo" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.efectivo.value|default:0 }}">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-12 col-md-4">
                                 <label class="form-label">🏦 Transferencia ($)</label>
                                 <input type="number" name="transferencia" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.transferencia.value|default:0 }}">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-12 col-md-4">
                                 <label class="form-label">💳 Tarjeta ($)</label>
                                 <input type="number" name="tarjeta_credito" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="{{ form.tarjeta_credito.value|default:0 }}">
                             </div>

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container page-container py-4">
+    <h2 class="fw-bold mb-4">Editar horario</h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="cat" value="{{ categoria.pk }}">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">{{ form.categorias.label }}</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        {% for checkbox in form.categorias %}
+                        <div class="form-check">{{ checkbox.tag }} <label class="form-check-label" for="{{ checkbox.id_for_label }}">{{ checkbox.choice_label }}</label></div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-3">{{ form.dia_semana.label_tag }}{{ form.dia_semana }}</div>
+                    <div class="col-md-3">{{ form.hora.label_tag }}{{ form.hora }}</div>
+                    <div class="col-md-3">{{ form.cupo_maximo.label_tag }}{{ form.cupo_maximo }}</div>
+                    <div class="col-md-3"><div class="form-check mt-4">{{ form.activo }} {{ form.activo.label_tag }}</div></div>
+                </div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+        <a href="{% url 'turnos_horarios' categoria.pk %}" class="btn btn-outline-secondary">Cancelar</a>
+    </form>
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@ from django.contrib.auth import login, logout,authenticate
 from django.urls import reverse
 from datetime import date, datetime, timedelta
 from django.http import JsonResponse
+from django.http import HttpResponseForbidden
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import F
@@ -17,6 +18,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone as tz
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
 from .twilio_utils import send_sms, send_whatsapp, send_email
@@ -49,7 +51,9 @@ def get_caja_abierta(gym):
 
 
 def usuario_puede_operar_caja(request, caja):
-    """True solo si el usuario logueado es quien abrió la caja."""
+    """True si es super usuario, o si el usuario logueado abrió la caja."""
+    if request.user.is_superuser:
+        return True
     if not caja:
         return False
     usuario = get_usuario_actual(request)
@@ -94,6 +98,8 @@ def requiere_caja_abierta(view_func):
     from functools import wraps
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
+        if request.user.is_superuser:
+            return view_func(request, *args, **kwargs)
         gym = get_gimnasio_actual(request)
         if not gym:
             messages.warning(request, 'Seleccioná un gimnasio primero.')
@@ -126,13 +132,23 @@ def set_gimnasio_actual(request, gimnasio_id):
 
 @never_cache
 def login_view(request):
+    gym_id = request.GET.get('gym') or request.POST.get('gym')
+    if request.user.is_authenticated:
+        if Socio.objects.filter(auth_user=request.user).exists():
+            return redirect('socio_portal')
+        return redirect('index')
     error = None
     if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
+        username = (request.POST.get('username') or '').strip()
+        password = request.POST.get('password') or ''
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
+            if EstadoAccesoSistema.get_estado().pausado and not user.is_superuser:
+                return redirect('sistema_pausado')
+            if Socio.objects.filter(auth_user=user).exists():
+                login(request, user)
+                return redirect('socio_portal')
             login(request, user)
 
             # Establecer el tipo de usuario en la sesión: super_usuario, admin, empleado
@@ -156,8 +172,17 @@ def login_view(request):
             else:
                 return redirect('index')
         else:
+            qs = Socio.objects.filter(dni=username).select_related('auth_user')
+            if gym_id:
+                qs = qs.filter(gimnasio_id=gym_id)
+            socio = qs.first()
+            if socio and socio.auth_user and socio.auth_user.check_password(password):
+                if EstadoAccesoSistema.get_estado().pausado:
+                    return redirect('sistema_pausado')
+                login(request, socio.auth_user)
+                return redirect('socio_portal')
             error = 'Usuario o contraseña incorrecta'
-    return render(request, 'login.html', {'error': error})
+    return render(request, 'login.html', {'error': error, 'gym_id': gym_id})
 
 
 def logout_view(request):
@@ -165,10 +190,63 @@ def logout_view(request):
     return redirect('login')
 
 
+def sistema_pausado(request):
+    return render(request, 'sistema_pausado.html')
+
+
+@login_required
+@require_POST
+def toggle_sistema_pausa(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden()
+    estado = EstadoAccesoSistema.get_estado()
+    estado.pausado = not estado.pausado
+    if estado.pausado:
+        estado.pausado_en = tz.now()
+        estado.pausado_por = request.user
+        estado.pausado_por_vencimiento = False
+        messages.warning(request, 'Sistema pausado. Solo Super Usuario puede ingresar.')
+    else:
+        estado.pausado_en = None
+        estado.pausado_por = None
+        estado.pausado_por_vencimiento = False
+        messages.success(request, 'Sistema despausado. Todos pueden ingresar con normalidad.')
+    estado.save()
+    return redirect(request.POST.get('next') or request.META.get('HTTP_REFERER') or reverse('index'))
+
+
+@login_required
+@require_POST
+def marcar_sistema_pagado(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden()
+    from .sistema_vencimiento import (
+        referencia_periodo,
+        periodos_pagados_set,
+        _periodo_key,
+        debe_pausar_por_vencimiento,
+    )
+    estado = EstadoAccesoSistema.get_estado()
+    ref = referencia_periodo()
+    pagados = periodos_pagados_set(estado.periodos_pagados)
+    pagados.add(_periodo_key(ref))
+    estado.periodos_pagados = ','.join(sorted(pagados))
+    if not debe_pausar_por_vencimiento(estado.periodos_pagados) and estado.pausado_por_vencimiento:
+        estado.pausado = False
+        estado.pausado_por_vencimiento = False
+        estado.pausado_en = None
+        estado.pausado_por = None
+        messages.success(request, 'Pago registrado. Sistema despausado.')
+    else:
+        messages.success(request, f'Pago registrado para {ref.strftime("%m/%Y")}.')
+    estado.save()
+    return redirect(request.POST.get('next') or request.META.get('HTTP_REFERER') or reverse('index'))
 
 
 @login_required
 def index(request):
+    if Socio.objects.filter(auth_user=request.user).exists():
+        return redirect('socio_portal')
     usuario = request.user.username
     tipo_usuario_valor = None # Inicializar la variable
 
@@ -221,28 +299,86 @@ def index(request):
 
 ##SOCIOS
 
+def _conteo_socios_por_categoria(socios_qs):
+    filas = (
+        socios_qs.values('tipo_mensualidad__categoria__id', 'tipo_mensualidad__categoria__nombre')
+        .annotate(cantidad=Count('pk'))
+        .order_by('tipo_mensualidad__categoria__nombre')
+    )
+    por_categoria = []
+    sin_categoria = 0
+    for fila in filas:
+        if fila['tipo_mensualidad__categoria__id'] is None:
+            sin_categoria = fila['cantidad']
+        else:
+            por_categoria.append({
+                'id': fila['tipo_mensualidad__categoria__id'],
+                'nombre': fila['tipo_mensualidad__categoria__nombre'],
+                'cantidad': fila['cantidad'],
+            })
+    return por_categoria, sin_categoria
+
+
+def _conteo_ingresos_por_categoria(ingresos):
+    por_categoria = {}
+    sin_categoria = 0
+    for ingreso in ingresos:
+        cat_id = ingreso.get('categoria_id')
+        if cat_id is None:
+            sin_categoria += 1
+        else:
+            nombre = ingreso.get('categoria') or '-'
+            por_categoria[nombre] = por_categoria.get(nombre, 0) + 1
+    conteo = [{'nombre': k, 'cantidad': v} for k, v in sorted(por_categoria.items(), key=lambda x: x[0].lower())]
+    return conteo, sin_categoria
+
+
 @login_required
 def lista_socios(request):
     gym = get_gimnasio_actual(request)
     q_buscar = (request.GET.get('q') or '').strip()
+    categoria_filtro = (request.GET.get('categoria') or '').strip()
     if gym:
         ultima_cuota_subq = Cuota.objects.filter(socio=OuterRef('pk')).order_by('-fecha_inicio')
-        socios = Socio.objects.filter(gimnasio=gym).select_related('tipo_mensualidad').annotate(
+        socios_base = Socio.objects.filter(gimnasio=gym).select_related(
+            'tipo_mensualidad', 'tipo_mensualidad__categoria',
+        ).annotate(
             tiene_cuota=Exists(Cuota.objects.filter(socio=OuterRef('pk'))),
             fecha_inicio_cuota=Subquery(ultima_cuota_subq.values('fecha_inicio')[:1]),
-        ).order_by('apellido', 'nombre')
+        )
+        total_socios_gym = socios_base.count()
+        conteo_por_categoria, conteo_sin_categoria = _conteo_socios_por_categoria(socios_base)
+        categorias_filtro = CategoriaMensualidad.objects.filter(gimnasio=gym).order_by('nombre')
+        socios = socios_base.order_by('apellido', 'nombre')
         if q_buscar:
             q_filtro = Q()
             for term in q_buscar.split():
                 q_filtro &= (Q(nombre__icontains=term) | Q(apellido__icontains=term) | Q(dni__icontains=term))
             socios = socios.filter(q_filtro)
+        if categoria_filtro == 'sin':
+            socios = socios.filter(tipo_mensualidad__categoria__isnull=True)
+        elif categoria_filtro.isdigit():
+            socios = socios.filter(tipo_mensualidad__categoria_id=int(categoria_filtro))
     else:
         socios = Socio.objects.none()
+        total_socios_gym = 0
+        conteo_por_categoria = []
+        conteo_sin_categoria = 0
+        categorias_filtro = CategoriaMensualidad.objects.none()
     try:
         nuevo_id = int(request.GET.get('nuevo')) if request.GET.get('nuevo') else None
     except (ValueError, TypeError):
         nuevo_id = None
-    return render(request, 'lista_socios.html', {'socios': socios, 'socio_nuevo_id': nuevo_id, 'q_buscar': q_buscar})
+    return render(request, 'lista_socios.html', {
+        'socios': socios,
+        'socio_nuevo_id': nuevo_id,
+        'q_buscar': q_buscar,
+        'categoria_filtro': categoria_filtro,
+        'categorias_filtro': categorias_filtro,
+        'total_socios_gym': total_socios_gym,
+        'conteo_por_categoria': conteo_por_categoria,
+        'conteo_sin_categoria': conteo_sin_categoria,
+    })
 
 
 @login_required
@@ -270,15 +406,9 @@ def crear_socio(request):
             nuevo_socio.clases_restantes = 0
             nuevo_socio.fecha_vencimiento = None
             nuevo_socio.save()
-            tm = nuevo_socio.tipo_mensualidad
-            if tm and tm.frecuencia == 'clases' and (tm.clases_incluidas or 0) > 0:
-                messages.info(
-                    request,
-                    f'Socio creado. Al cobrar con «Pagar» se acreditarán {tm.clases_incluidas} clases del plan.'
-                )
-            else:
-                messages.success(request, 'Socio creado. Cobrá la mensualidad con el botón «Pagar» para activar el plan.')
-            return redirect(reverse('lista_socios') + f'?nuevo={nuevo_socio.id}')
+            from .socio_portal_utils import crear_o_actualizar_cuenta_socio
+            crear_o_actualizar_cuenta_socio(nuevo_socio)
+            return redirect('cobrar_mensualidad', socio_id=nuevo_socio.id)
         elif not current_user:
             form = SocioForm(request.POST, gimnasio=gym)
             form.add_error(None, 'El usuario actual no está registrado.')
@@ -294,7 +424,9 @@ def editar_socio(request, pk):
     if request.method == 'POST':
         form = SocioForm(request.POST, instance=socio, gimnasio=gym)
         if form.is_valid():
-            form.save()
+            socio = form.save()
+            from .socio_portal_utils import crear_o_actualizar_cuenta_socio
+            crear_o_actualizar_cuenta_socio(socio)
             return redirect('lista_socios')
     else:
         form = SocioForm(instance=socio, gimnasio=gym)
@@ -1051,19 +1183,20 @@ def profesor_detalle(request, pk):
         'form_adelanto': form_adel,
         'form_pago': form_pago,
         'caja_abierta': get_caja_abierta(gym) if gym else None,
+        'puede_operar_caja': usuario_puede_operar_caja(request, get_caja_abierta(gym) if gym else None),
     })
 
 
 def pago_profesor_guardar(request, profesor, data):
-    """Registra el pago del profesor y crea el ingreso. Requiere caja abierta."""
+    """Registra el pago del profesor y crea el ingreso. Requiere caja abierta (excepto super usuario)."""
     gym = profesor.gimnasio
     caja = get_caja_abierta(gym) if gym else None
-    if not caja:
-        messages.warning(request, 'Debés abrir la caja antes de registrar pagos.')
-        return None
     if not usuario_puede_operar_caja(request, caja):
-        dueno = caja.usuario_apertura.usuario if caja.usuario_apertura else 'otro usuario'
-        messages.error(request, f'Solo {dueno} puede registrar pagos mientras su caja esté abierta.')
+        if not caja:
+            messages.warning(request, 'Debés abrir la caja antes de registrar pagos.')
+        else:
+            dueno = caja.usuario_apertura.usuario if caja.usuario_apertura else 'otro usuario'
+            messages.error(request, f'Solo {dueno} puede registrar pagos mientras su caja esté abierta.')
         return None
     monto = float(data['monto'])
     metodo = data.get('metodo_pago', 'efectivo')
@@ -1163,7 +1296,9 @@ def venta_crear(request):
             django_user = request.user
             # Obtenemos nuestro usuario personalizado con el mismo nombre de usuario
             try:
-                usuario_personalizado = Usuario.objects.get(usuario=django_user.username)
+                usuario_personalizado = get_usuario_actual(request)
+                if not usuario_personalizado:
+                    raise Usuario.DoesNotExist
                 venta.usuario = usuario_personalizado
                 venta.gimnasio = form.cleaned_data['producto'].gimnasio
                 venta.fecha = date.today()
@@ -1775,10 +1910,40 @@ def detalle_balance(request, balance_id):
 
 ##lista de ingresos
 
+def _ingreso_desde_registro(registro, socio, fecha_referencia):
+    """Arma el dict de fila para listados de ingreso (vencido / pendiente de pago)."""
+    pendiente_pago = not Cuota.objects.filter(socio=socio).exists()
+    fecha_vencimiento = socio.fecha_vencimiento
+    if not fecha_vencimiento and not pendiente_pago:
+        try:
+            ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
+            fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
+        except Cuota.DoesNotExist:
+            fecha_vencimiento = None
+    cr = registro.clases_restantes_al_ingresar
+    clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
+    vencido_por_fecha = bool(fecha_vencimiento and fecha_vencimiento < fecha_referencia)
+    cat = socio.tipo_mensualidad.categoria if socio.tipo_mensualidad else None
+    return {
+        'nombre': registro.nombre_socio,
+        'apellido': registro.apellido_socio,
+        'dni': registro.dni_socio,
+        'fecha_ingreso': registro.fecha_ingreso,
+        'fecha_vencimiento': fecha_vencimiento,
+        'pendiente_pago': pendiente_pago,
+        'vencido': pendiente_pago or vencido_por_fecha,
+        'clases_restantes': clases_despues,
+        'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
+        'categoria': cat.nombre if cat else '-',
+        'categoria_id': cat.pk if cat else None,
+    }
+
+
 @login_required
 def listado_ingresos_diarios(request):
     gym = get_gimnasio_actual(request)
     fecha = request.GET.get('fecha', date.today().isoformat())
+    categoria_filtro = (request.GET.get('categoria') or '').strip()
     try:
         fecha_obj = datetime.strptime(fecha, '%Y-%m-%d').date() if fecha else date.today()
     except (ValueError, TypeError):
@@ -1791,28 +1956,12 @@ def listado_ingresos_diarios(request):
 
     for registro in registros_ingreso:
         try:
-            socio = Socio.objects.get(dni=registro.dni_socio)
-            fecha_vencimiento = socio.fecha_vencimiento
-            if not fecha_vencimiento:
-                try:
-                    ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
-                    fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
-                except Cuota.DoesNotExist:
-                    fecha_vencimiento = None
-
-            # Mostrar clases DESPUÉS del ingreso (ya se descontó 1 al registrar)
-            cr = registro.clases_restantes_al_ingresar
-            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
-            ingresos_con_socio.append({
-                'nombre': registro.nombre_socio,
-                'apellido': registro.apellido_socio,
-                'dni': registro.dni_socio,
-                'fecha_ingreso': registro.fecha_ingreso,
-                'fecha_vencimiento': fecha_vencimiento,
-                'vencido': bool(fecha_vencimiento and fecha_vencimiento < fecha_obj),
-                'clases_restantes': clases_despues,
-                'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
-            })
+            socio = Socio.objects.select_related(
+                'tipo_mensualidad', 'tipo_mensualidad__categoria',
+            ).get(dni=registro.dni_socio, gimnasio=gym) if gym else Socio.objects.select_related(
+                'tipo_mensualidad', 'tipo_mensualidad__categoria',
+            ).get(dni=registro.dni_socio)
+            ingresos_con_socio.append(_ingreso_desde_registro(registro, socio, fecha_obj))
         except Socio.DoesNotExist:
             cr = registro.clases_restantes_al_ingresar
             clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
@@ -1822,9 +1971,12 @@ def listado_ingresos_diarios(request):
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
+                'pendiente_pago': False,
                 'vencido': False,
                 'clases_restantes': clases_despues,
                 'tipo_mensualidad': 'Socio no encontrado',
+                'categoria': '-',
+                'categoria_id': None,
             })
         except Exception as e:
             cr = registro.clases_restantes_al_ingresar
@@ -1835,12 +1987,33 @@ def listado_ingresos_diarios(request):
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
+                'pendiente_pago': False,
                 'vencido': False,
                 'clases_restantes': clases_despues,
                 'tipo_mensualidad': 'Error al obtener mensualidad',
+                'categoria': '-',
+                'categoria_id': None,
             })
 
-    context = {'ingresos': ingresos_con_socio, 'fecha': fecha, 'fecha_obj': fecha_obj}
+    total_ingresos = len(ingresos_con_socio)
+    conteo_por_categoria, conteo_sin_categoria = _conteo_ingresos_por_categoria(ingresos_con_socio)
+    if categoria_filtro == 'sin':
+        ingresos_con_socio = [i for i in ingresos_con_socio if i.get('categoria_id') is None]
+    elif categoria_filtro.isdigit():
+        cat_id = int(categoria_filtro)
+        ingresos_con_socio = [i for i in ingresos_con_socio if i.get('categoria_id') == cat_id]
+
+    categorias_filtro = CategoriaMensualidad.objects.filter(gimnasio=gym).order_by('nombre') if gym else CategoriaMensualidad.objects.none()
+    context = {
+        'ingresos': ingresos_con_socio,
+        'fecha': fecha,
+        'fecha_obj': fecha_obj,
+        'categoria_filtro': categoria_filtro,
+        'categorias_filtro': categorias_filtro,
+        'total_ingresos': total_ingresos,
+        'conteo_por_categoria': conteo_por_categoria,
+        'conteo_sin_categoria': conteo_sin_categoria,
+    }
     return render(request, 'listado_ingresos.html', context)
 
 def historial_ingresos(request):
@@ -1878,26 +2051,7 @@ def detalle_ingresos_dia(request, fecha):
     for registro in registros_ingreso:
         try:
             socio = Socio.objects.get(dni=registro.dni_socio)
-            fecha_vencimiento = socio.fecha_vencimiento
-            if not fecha_vencimiento:
-                try:
-                    ultima_cuota = Cuota.objects.filter(socio=socio).latest('fecha_inicio')
-                    fecha_vencimiento = ultima_cuota.fecha_inicio + timedelta(days=30)
-                except Cuota.DoesNotExist:
-                    fecha_vencimiento = None
-
-            cr = registro.clases_restantes_al_ingresar
-            clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
-            ingresos_con_socio.append({
-                'nombre': registro.nombre_socio,
-                'apellido': registro.apellido_socio,
-                'dni': registro.dni_socio,
-                'fecha_ingreso': registro.fecha_ingreso,
-                'fecha_vencimiento': fecha_vencimiento,
-                'vencido': bool(fecha_vencimiento and fecha_vencimiento < fecha_obj),
-                'clases_restantes': clases_despues,
-                'tipo_mensualidad': socio.tipo_mensualidad.tipo if socio.tipo_mensualidad else 'Sin mensualidad',
-            })
+            ingresos_con_socio.append(_ingreso_desde_registro(registro, socio, fecha_obj))
         except Socio.DoesNotExist:
             cr = registro.clases_restantes_al_ingresar
             clases_despues = (cr - 1) if cr is not None and cr > 0 else (None if cr is None else 0)
@@ -1907,6 +2061,7 @@ def detalle_ingresos_dia(request, fecha):
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
+                'pendiente_pago': False,
                 'vencido': False,
                 'clases_restantes': clases_despues,
                 'tipo_mensualidad': 'Socio no encontrado',
@@ -1920,6 +2075,7 @@ def detalle_ingresos_dia(request, fecha):
                 'dni': registro.dni_socio,
                 'fecha_ingreso': registro.fecha_ingreso,
                 'fecha_vencimiento': None,
+                'pendiente_pago': False,
                 'vencido': False,
                 'clases_restantes': clases_despues,
                 'tipo_mensualidad': 'Error al obtener mensualidad',
@@ -2065,16 +2221,20 @@ def api_ingreso_por_dni(request):
                     'mensaje': 'Socio no encontrado'
                 })
             hoy = date.today()
+            pendiente_pago = not Cuota.objects.filter(socio=socio).exists()
             vigente = True
             mensaje_vigencia = ''
-            if socio.fecha_vencimiento and socio.fecha_vencimiento < hoy:
+            if pendiente_pago:
+                vigente = False
+                mensaje_vigencia = 'SOCIO PENDIENTE DE PAGO'
+            elif socio.fecha_vencimiento and socio.fecha_vencimiento < hoy:
                 vigente = False
                 mensaje_vigencia = 'Mensualidad vencida'
             elif socio.tipo_mensualidad and socio.tipo_mensualidad.frecuencia == 'clases' and socio.clases_restantes <= 0:
                 vigente = False
                 mensaje_vigencia = 'Sin clases restantes'
             tipo_mens = socio.tipo_mensualidad
-            mes_vencido = bool(socio.fecha_vencimiento and socio.fecha_vencimiento < hoy)
+            mes_vencido = pendiente_pago or bool(socio.fecha_vencimiento and socio.fecha_vencimiento < hoy)
             es_plan_clases = bool(tipo_mens and tipo_mens.frecuencia == 'clases')
             usa_contador_clases = bool(
                 tipo_mens
@@ -2097,10 +2257,13 @@ def api_ingreso_por_dni(request):
                 socio.clases_restantes = F('clases_restantes') - 1
                 socio.save(update_fields=['clases_restantes'])
                 socio.refresh_from_db()
+            from .turnos_utils import info_turno_kiosk
+            turno_kiosk = info_turno_kiosk(socio, hoy)
             return JsonResponse({
                 'ok': True,
                 'encontrado': True,
                 'vigente': vigente,
+                'pendiente_pago': pendiente_pago,
                 'nombre': socio.nombre,
                 'apellido': socio.apellido,
                 'tipo_mensualidad': tipo_mens.tipo if tipo_mens else 'Sin mensualidad',
@@ -2112,7 +2275,10 @@ def api_ingreso_por_dni(request):
                 'es_plan_clases': es_plan_clases,
                 'usa_contador_clases': usa_contador_clases,
                 'frecuencia': tipo_mens.frecuencia if tipo_mens else None,
-                'mensaje_vigencia': mensaje_vigencia
+                'mensaje_vigencia': mensaje_vigencia,
+                'usa_turnos': turno_kiosk.get('usa_turnos', False),
+                'turnos_hoy': turno_kiosk.get('turnos_hoy', []),
+                'tiene_turno_hoy': turno_kiosk.get('tiene_turno_hoy', False),
             })
         except json.JSONDecodeError:
             return JsonResponse({'error': 'JSON inválido', 'ok': False}, status=400)
