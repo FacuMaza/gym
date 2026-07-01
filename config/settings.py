@@ -34,8 +34,20 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only-change-me')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '*').split(',') if host.strip()]
-CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if origin.strip()]
+def _env_list(key: str, default: str = '') -> list[str]:
+    return [item.strip() for item in os.environ.get(key, default).split(',') if item.strip()]
+
+
+ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '*')
+# Acepta todos los subdominios: ALLOWED_HOSTS_PARENT=sistemgympro.com → .sistemgympro.com
+_allowed_parent = os.environ.get('ALLOWED_HOSTS_PARENT', '').strip().lstrip('.')
+if _allowed_parent:
+    ALLOWED_HOSTS.append(f'.{_allowed_parent}')
+ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
+
+CSRF_TRUSTED_ORIGINS = _env_list('CSRF_TRUSTED_ORIGINS')
+# Con CSRF_TRUSTED_SUBDOMAIN_SUFFIX=sistemgympro.com acepta https://facugym.sistemgympro.com, etc.
+CSRF_TRUSTED_SUBDOMAIN_SUFFIX = os.environ.get('CSRF_TRUSTED_SUBDOMAIN_SUFFIX', '').strip().lstrip('.')
 # URL pública para QR (producción). Ej: https://tudominio.com
 PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip() or None
 
@@ -63,7 +75,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    'gimnasio.middleware.SubdomainCsrfMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'gimnasio.middleware.SistemaPausadoMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',

@@ -1,6 +1,26 @@
+from urllib.parse import urlparse
+
+from django.conf import settings
 from django.contrib.auth import logout
+from django.middleware.csrf import CsrfViewMiddleware
 from django.shortcuts import redirect
 from django.utils import timezone
+
+
+class SubdomainCsrfMiddleware(CsrfViewMiddleware):
+    """CSRF estándar + orígenes HTTPS en subdominios de CSRF_TRUSTED_SUBDOMAIN_SUFFIX."""
+
+    def _origin_verified(self, request):
+        if super()._origin_verified(request):
+            return True
+        suffix = getattr(settings, 'CSRF_TRUSTED_SUBDOMAIN_SUFFIX', '')
+        if not suffix:
+            return False
+        origin = request.META.get('HTTP_ORIGIN')
+        if not origin:
+            return False
+        host = urlparse(origin).hostname or ''
+        return host == suffix or host.endswith(f'.{suffix}')
 
 
 class SistemaPausadoMiddleware:
