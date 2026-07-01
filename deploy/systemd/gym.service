@@ -1,0 +1,22 @@
+[Unit]
+Description=GYM-PRO gunicorn (facugym)
+Requires=gym.socket
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=www-data
+WorkingDirectory=/var/www/gym
+EnvironmentFile=-/var/www/gym/.env
+ExecStart=/var/www/gym/venv/bin/gunicorn \
+    --access-logfile /var/www/gym/logs/gunicorn-access.log \
+    --error-logfile /var/www/gym/logs/gunicorn-error.log \
+    --workers 3 \
+    --bind unix:/run/gym.sock \
+    config.wsgi:application
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
