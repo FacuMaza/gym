@@ -161,6 +161,9 @@
                                         {% if v.tarjeta_credito %}
                                         <span class="badge rounded-pill bg-secondary bg-opacity-10 text-secondary border px-3 py-2">Tarjeta $ {{ v.tarjeta_credito|moneda_ar }}</span>
                                         {% endif %}
+                                        {% if not v.efectivo and not v.transferencia and not v.tarjeta_credito %}
+                                        <span class="badge rounded-pill bg-light text-muted border px-3 py-2">Sin desglose de pago</span>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 <div class="text-end">

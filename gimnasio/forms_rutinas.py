@@ -1,4 +1,5 @@
 from django import forms
+from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
 
 from .models import CategoriaMensualidad, EjercicioRutina, ProgramacionEnvio, Rutina
@@ -33,23 +34,63 @@ class RutinaForm(forms.ModelForm):
 class EjercicioRutinaForm(forms.ModelForm):
     class Meta:
         model = EjercicioRutina
-        fields = ['nombre', 'series', 'repeticiones', 'peso', 'descanso', 'notas', 'orden']
+        fields = [
+            'ejercicio_catalogo', 'nombre', 'series', 'repeticiones',
+            'peso', 'descanso', 'notas', 'orden',
+        ]
         widgets = {
-            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Press banca'}),
+            'ejercicio_catalogo': forms.HiddenInput(attrs={'class': 'ejercicio-catalogo-id'}),
+            'nombre': forms.HiddenInput(attrs={'class': 'ejercicio-nombre-hidden'}),
             'series': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'repeticiones': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12 o 10-12'}),
             'peso': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Opcional'}),
             'descanso': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '60 seg'}),
-            'notas': forms.TextInput(attrs={'class': 'form-control'}),
-            'orden': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'notas': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Opcional'}),
+            'orden': forms.HiddenInput(attrs={'class': 'ejercicio-orden-hidden'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['ejercicio_catalogo'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('DELETE'):
+            return cleaned
+        catalogo = cleaned.get('ejercicio_catalogo')
+        nombre = (cleaned.get('nombre') or '').strip()
+        if not catalogo and not nombre:
+            return cleaned
+        if catalogo:
+            cleaned['nombre'] = catalogo.nombre
+        elif not nombre:
+            raise ValidationError('Seleccioná un ejercicio del catálogo.')
+        return cleaned
+
+
+class EjercicioRutinaBaseFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        orden = 1
+        for form in self.forms:
+            if not hasattr(form, 'cleaned_data'):
+                continue
+            cd = form.cleaned_data
+            if cd.get('DELETE'):
+                continue
+            if not cd.get('ejercicio_catalogo') and not (cd.get('nombre') or '').strip():
+                cd['DELETE'] = True
+                continue
+            cd['orden'] = orden
+            orden += 1
 
 
 EjercicioRutinaFormSet = inlineformset_factory(
     Rutina,
     EjercicioRutina,
     form=EjercicioRutinaForm,
-    extra=1,
+    formset=EjercicioRutinaBaseFormSet,
+    extra=0,
     can_delete=True,
     max_num=100,
 )

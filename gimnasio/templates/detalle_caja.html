@@ -11,7 +11,7 @@
             <div class="table-responsive mb-4">
                 <table class="table table-sm">
                     <thead class="table-light">
-                        <tr><th>Fecha</th><th>Socio</th><th>Plan</th><th class="text-end">Monto</th></tr>
+                        <tr><th>Fecha</th><th>Socio</th><th>Plan</th><th>Forma de pago</th><th class="text-end">Monto</th></tr>
                     </thead>
                     <tbody>
                         {% for c in cuotas %}
@@ -19,21 +19,25 @@
                             <td>{{ c.fecha_inicio|date:"d/m/Y" }}</td>
                             <td>{{ c.socio.apellido }}, {{ c.socio.nombre }}</td>
                             <td>{{ c.tipo_mensualidad }}</td>
+                            <td>{% include 'partials/desglose_pago.html' with efectivo=c.efectivo transferencia=c.transferencia tarjeta_credito=c.tarjeta_credito titular=c.nombre_titular_transferencia %}</td>
                             <td class="text-end text-success">$ {{ c.precio|moneda_ar }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="4" class="text-muted">Sin mensualidades</td></tr>
+                        <tr><td colspan="5" class="text-muted">Sin mensualidades</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            <p class="text-end fw-semibold">Total mensualidades: $ {{ tot_mens|moneda_ar }}</p>
+            <p class="text-end fw-semibold mb-1">Total mensualidades: $ {{ tot_mens|moneda_ar }}</p>
+            <p class="text-end text-muted small mb-4">
+                Efectivo $ {{ mens_ef|moneda_ar }} · Transferencia $ {{ mens_tr|moneda_ar }} · Tarjeta $ {{ mens_tc|moneda_ar }}
+            </p>
 
             <h5 class="mb-3 mt-4">Ventas</h5>
             <div class="table-responsive mb-4">
                 <table class="table table-sm">
                     <thead class="table-light">
-                        <tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th class="text-end">Total</th></tr>
+                        <tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Forma de pago</th><th class="text-end">Total</th></tr>
                     </thead>
                     <tbody>
                         {% for v in ventas %}
@@ -41,15 +45,19 @@
                             <td>{{ v.fecha|date:"d/m/Y" }}</td>
                             <td>{{ v.producto.descripcion }}</td>
                             <td>{{ v.cantidad }}</td>
+                            <td>{% include 'partials/desglose_pago.html' with efectivo=v.efectivo transferencia=v.transferencia tarjeta_credito=v.tarjeta_credito titular=v.nombre_titular %}</td>
                             <td class="text-end text-success">$ {{ v.monto_total|moneda_ar }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="4" class="text-muted">Sin ventas</td></tr>
+                        <tr><td colspan="5" class="text-muted">Sin ventas</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            <p class="text-end fw-semibold">Total ventas: $ {{ tot_ventas|moneda_ar }}</p>
+            <p class="text-end fw-semibold mb-1">Total ventas: $ {{ tot_ventas|moneda_ar }}</p>
+            <p class="text-end text-muted small mb-4">
+                Efectivo $ {{ ven_ef|moneda_ar }} · Transferencia $ {{ ven_tr|moneda_ar }} · Tarjeta $ {{ ven_tc|moneda_ar }}
+            </p>
 
             {% if pagos_profesor %}
             <h5 class="mb-3 mt-4">Pagos de profesores</h5>

@@ -50,46 +50,62 @@
                                 {% if form.cantidad.errors %}<div class="text-danger small mt-1">{{ form.cantidad.errors.0 }}</div>{% endif %}
                             </div>
                             <div class="col-12 col-md-8">
-                                <label class="form-label fw-semibold">Total</label>
-                                <div class="form-control form-control-lg bg-light py-3 fs-4 fw-bold text-success" id="display-total">$ 0.00</div>
+                                <label class="form-label fw-semibold">Total a cobrar</label>
+                                <div class="form-control form-control-lg bg-light py-3 fs-4 fw-bold text-success" id="display-total">$ 0</div>
+                                <p class="text-muted small mb-0 mt-1 d-none" id="total-bruto-hint"></p>
                                 <input type="hidden" name="total" id="id_total" value="0">
                             </div>
                         </div>
 
-                        <div id="bloque-pagos" class="mb-4">
-                            <div class="accordion" id="accordionPagos">
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePagos">
-                                            Formas de pago (efectivo, transferencia, tarjeta)
-                                        </button>
-                                    </h2>
-                                    <div id="collapsePagos" class="accordion-collapse collapse" data-bs-parent="#accordionPagos">
-                                        <div class="accordion-body">
-                                            <div class="row g-3">
-                                                <div class="col-12 col-md-4">
-                                                    <label class="form-label">💵 Efectivo</label>
-                                                    <input type="number" name="efectivo" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
-                                                </div>
-                                                <div class="col-12 col-md-4">
-                                                    <label class="form-label">🏦 Transferencia</label>
-                                                    <input type="number" name="transferencia" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
-                                                </div>
-                                                <div class="col-12 col-md-4">
-                                                    <label class="form-label">💳 Tarjeta</label>
-                                                    <input type="number" name="tarjeta_credito" class="form-control monto-pago" placeholder="0" step="0.01" min="0" value="0">
-                                                </div>
-                                            </div>
-                                            <div class="mt-3 d-none" id="div-titular">
-                                                <label class="form-label">Nombre del titular</label>
-                                                <input type="text" name="nombre_titular" id="id_nombre_titular" class="form-control" placeholder="Ej: Juan Pérez">
-                                                {% if form.nombre_titular.errors %}<div class="text-danger small">{{ form.nombre_titular.errors.0 }}</div>{% endif %}
-                                            </div>
-                                            <p class="text-muted small mt-2 mb-0">Faltante: $<span id="faltante">0</span></p>
-                                        </div>
+                        <div id="bloque-pagos" class="mb-4 p-3 rounded-3 border" style="background: #f8fafc;">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                <label class="form-label fw-semibold mb-0">Forma de pago</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pago-dividido">
+                                    Pago dividido
+                                </button>
+                            </div>
+
+                            <div id="pago-simple">
+                                <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Método de pago">
+                                    <input type="radio" class="btn-check" name="metodo_pago_ui" id="mp-efectivo" value="efectivo" checked>
+                                    <label class="btn btn-outline-success" for="mp-efectivo">💵 Efectivo</label>
+                                    <input type="radio" class="btn-check" name="metodo_pago_ui" id="mp-transferencia" value="transferencia">
+                                    <label class="btn btn-outline-primary" for="mp-transferencia">🏦 Transferencia</label>
+                                    <input type="radio" class="btn-check" name="metodo_pago_ui" id="mp-tarjeta" value="tarjeta_credito">
+                                    <label class="btn btn-outline-secondary" for="mp-tarjeta">💳 Tarjeta</label>
+                                </div>
+                                <label for="monto-simple" class="form-label">Monto</label>
+                                <input type="number" id="monto-simple" class="form-control form-control-lg" step="1" min="0" value="0">
+                            </div>
+
+                            <div id="pago-dividido" class="d-none">
+                                <p class="text-muted small mb-3">Distribuí el total entre las formas de pago. Ningún monto puede superar el total.</p>
+                                <div class="row g-3">
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">💵 Efectivo</label>
+                                        <input type="number" name="efectivo" class="form-control monto-pago" placeholder="0" step="1" min="0" value="0">
+                                    </div>
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">🏦 Transferencia</label>
+                                        <input type="number" name="transferencia" class="form-control monto-pago" placeholder="0" step="1" min="0" value="0">
+                                    </div>
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">💳 Tarjeta</label>
+                                        <input type="number" name="tarjeta_credito" class="form-control monto-pago" placeholder="0" step="1" min="0" value="0">
                                     </div>
                                 </div>
                             </div>
+
+                            <input type="hidden" name="efectivo" id="hid-efectivo" value="0" disabled>
+                            <input type="hidden" name="transferencia" id="hid-transferencia" value="0" disabled>
+                            <input type="hidden" name="tarjeta_credito" id="hid-tarjeta" value="0" disabled>
+
+                            <div class="mt-3 d-none" id="div-titular">
+                                <label class="form-label">Nombre del titular</label>
+                                <input type="text" name="nombre_titular" id="id_nombre_titular" class="form-control" placeholder="Ej: Juan Pérez">
+                                {% if form.nombre_titular.errors %}<div class="text-danger small">{{ form.nombre_titular.errors.0 }}</div>{% endif %}
+                            </div>
+                            <p class="text-muted small mt-3 mb-0" id="linea-faltante">Faltante: $<span id="faltante">0</span></p>
                         </div>
 
                         <div id="mensaje-cuenta" class="alert alert-info d-none mb-4">
@@ -117,59 +133,202 @@
     var profesorSelect = document.getElementById('id_profesor');
     var totalHidden = document.getElementById('id_total');
     var displayTotal = document.getElementById('display-total');
-    var inputs = document.querySelectorAll('.monto-pago');
+    var totalBrutoHint = document.getElementById('total-bruto-hint');
     var btnSubmit = document.getElementById('btn-submit');
     var bloquePagos = document.getElementById('bloque-pagos');
     var mensajeCuenta = document.getElementById('mensaje-cuenta');
+    var pagoSimple = document.getElementById('pago-simple');
+    var pagoDividido = document.getElementById('pago-dividido');
+    var btnPagoDividido = document.getElementById('btn-pago-dividido');
+    var montoSimple = document.getElementById('monto-simple');
+    var hidEfectivo = document.getElementById('hid-efectivo');
+    var hidTransferencia = document.getElementById('hid-transferencia');
+    var hidTarjeta = document.getElementById('hid-tarjeta');
+    var divididoActivo = false;
+
+    function redondearTotal(raw) {
+        return Math.ceil((parseFloat(raw) || 0) - 1e-9);
+    }
+
+    function totalCobrar() {
+        return parseFloat(totalHidden.value) || 0;
+    }
+
+    function metodoSeleccionado() {
+        var checked = document.querySelector('input[name="metodo_pago_ui"]:checked');
+        return checked ? checked.value : 'efectivo';
+    }
+
+    function inputsDivididos() {
+        return pagoDividido.querySelectorAll('.monto-pago');
+    }
 
     function esVentaProfesor() {
         return profesorSelect && profesorSelect.value !== '';
+    }
+
+    function setModoCamposOcultos(esDividido) {
+        hidEfectivo.disabled = esDividido;
+        hidTransferencia.disabled = esDividido;
+        hidTarjeta.disabled = esDividido;
+        inputsDivididos().forEach(function(inp) {
+            inp.disabled = !esDividido;
+        });
+    }
+
+    function otraSumaDividida(sinEste) {
+        var s = 0;
+        inputsDivididos().forEach(function(inp) {
+            if (inp !== sinEste) s += parseFloat(inp.value) || 0;
+        });
+        return s;
+    }
+
+    function limitarMonto(inp, maxPermitido) {
+        var val = parseFloat(inp.value);
+        if (isNaN(val) || val < 0) {
+            inp.value = 0;
+            return;
+        }
+        if (val > maxPermitido) {
+            inp.value = maxPermitido;
+        }
+    }
+
+    function syncSimpleHidden() {
+        var total = totalCobrar();
+        var monto = parseFloat(montoSimple.value) || 0;
+        if (monto > total) monto = total;
+        montoSimple.value = monto;
+        hidEfectivo.value = 0;
+        hidTransferencia.value = 0;
+        hidTarjeta.value = 0;
+        var metodo = metodoSeleccionado();
+        if (metodo === 'efectivo') hidEfectivo.value = monto;
+        else if (metodo === 'transferencia') hidTransferencia.value = monto;
+        else hidTarjeta.value = monto;
+    }
+
+    function actualizarTitular() {
+        var divTitular = document.getElementById('div-titular');
+        if (!divTitular) return;
+        var transf = 0;
+        var tarj = 0;
+        if (divididoActivo) {
+            transf = parseFloat(pagoDividido.querySelector('input[name="transferencia"]').value) || 0;
+            tarj = parseFloat(pagoDividido.querySelector('input[name="tarjeta_credito"]').value) || 0;
+        } else {
+            var metodo = metodoSeleccionado();
+            var monto = parseFloat(montoSimple.value) || 0;
+            transf = metodo === 'transferencia' ? monto : 0;
+            tarj = metodo === 'tarjeta_credito' ? monto : 0;
+        }
+        if (transf > 0 || tarj > 0) divTitular.classList.remove('d-none');
+        else divTitular.classList.add('d-none');
+    }
+
+    function actualizarPagos() {
+        var total = totalCobrar();
+        var suma = 0;
+
+        if (divididoActivo) {
+            inputsDivididos().forEach(function(inp) {
+                limitarMonto(inp, Math.max(0, total - otraSumaDividida(inp)));
+                suma += parseFloat(inp.value) || 0;
+            });
+        } else {
+            syncSimpleHidden();
+            suma = parseFloat(montoSimple.value) || 0;
+        }
+
+        var faltante = Math.max(0, total - suma);
+        document.getElementById('faltante').textContent = formatMonedaAR(faltante, 0);
+        actualizarTitular();
+        btnSubmit.disabled = total <= 0 || (!esVentaProfesor() && faltante > 0);
     }
 
     function calcularTotal() {
         var opt = productoSelect.options[productoSelect.selectedIndex];
         var precio = parseFloat(opt && opt.dataset.precio) || 0;
         var cantidad = parseInt(cantidadInput.value, 10) || 0;
-        var total = precio * cantidad;
-        totalHidden.value = total.toFixed(2);
-        displayTotal.textContent = '$ ' + formatMonedaAR(total, 2);
+        var bruto = precio * cantidad;
+        var total = redondearTotal(bruto);
+        totalHidden.value = total;
+        displayTotal.textContent = '$ ' + formatMonedaAR(total, 0);
+        if (bruto > 0 && Math.abs(bruto - total) > 0.001) {
+            totalBrutoHint.textContent = 'Calculado: $ ' + formatMonedaAR(bruto, 2) + ' → redondeado al peso superior';
+            totalBrutoHint.classList.remove('d-none');
+        } else {
+            totalBrutoHint.classList.add('d-none');
+        }
+        if (!divididoActivo) {
+            montoSimple.value = total;
+        }
         actualizarUI();
     }
 
     function actualizarUI() {
-        var total = parseFloat(totalHidden.value) || 0;
         if (esVentaProfesor()) {
             bloquePagos.classList.add('d-none');
             if (mensajeCuenta) mensajeCuenta.classList.remove('d-none');
-            btnSubmit.disabled = total <= 0;
+            btnSubmit.disabled = totalCobrar() <= 0;
         } else {
-            if (bloquePagos) bloquePagos.classList.remove('d-none');
+            bloquePagos.classList.remove('d-none');
             if (mensajeCuenta) mensajeCuenta.classList.add('d-none');
             actualizarPagos();
         }
     }
 
-    function actualizarPagos() {
-        var total = parseFloat(totalHidden.value) || 0;
-        var suma = 0;
-        var inpTransfer = document.querySelector('input[name="transferencia"]');
-        var inpTarjeta = document.querySelector('input[name="tarjeta_credito"]');
-        inputs.forEach(function(inp) {
-            var val = parseFloat(inp.value) || 0;
-            suma += val;
-        });
-        var faltante = Math.max(0, total - suma);
-        var faltanteEl = document.getElementById('faltante');
-        if (faltanteEl) faltanteEl.textContent = formatMonedaAR(faltante, 2);
-        var divTitular = document.getElementById('div-titular');
-        var transf = inpTransfer ? parseFloat(inpTransfer.value) || 0 : 0;
-        var tarj = inpTarjeta ? parseFloat(inpTarjeta.value) || 0 : 0;
-        if (divTitular) {
-            if (transf > 0 || tarj > 0) divTitular.classList.remove('d-none');
-            else divTitular.classList.add('d-none');
-        }
-        btnSubmit.disabled = total <= 0 || (Math.abs(faltante) > 0.01 && !esVentaProfesor());
+    function activarPagoDividido() {
+        divididoActivo = true;
+        pagoSimple.classList.add('d-none');
+        pagoDividido.classList.remove('d-none');
+        btnPagoDividido.classList.replace('btn-outline-primary', 'btn-primary');
+        btnPagoDividido.textContent = 'Pago único';
+        setModoCamposOcultos(true);
+        var total = totalCobrar();
+        var inputs = inputsDivididos();
+        inputs.forEach(function(inp) { inp.value = 0; });
+        if (inputs[0]) inputs[0].value = total;
+        actualizarPagos();
     }
+
+    function activarPagoSimple() {
+        divididoActivo = false;
+        pagoSimple.classList.remove('d-none');
+        pagoDividido.classList.add('d-none');
+        btnPagoDividido.classList.replace('btn-primary', 'btn-outline-primary');
+        btnPagoDividido.textContent = 'Pago dividido';
+        setModoCamposOcultos(false);
+        montoSimple.value = totalCobrar();
+        syncSimpleHidden();
+        actualizarPagos();
+    }
+
+    btnPagoDividido.addEventListener('click', function() {
+        if (divididoActivo) activarPagoSimple();
+        else activarPagoDividido();
+    });
+
+    document.querySelectorAll('input[name="metodo_pago_ui"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (!divididoActivo) {
+                montoSimple.value = totalCobrar();
+                syncSimpleHidden();
+                actualizarPagos();
+            }
+        });
+    });
+
+    montoSimple.addEventListener('input', function() {
+        limitarMonto(montoSimple, totalCobrar());
+        syncSimpleHidden();
+        actualizarPagos();
+    });
+
+    inputsDivididos().forEach(function(inp) {
+        inp.addEventListener('input', actualizarPagos);
+    });
 
     var buscarProducto = document.getElementById('buscar-producto');
     if (buscarProducto) {
@@ -191,8 +350,12 @@
     productoSelect.addEventListener('change', calcularTotal);
     cantidadInput.addEventListener('input', calcularTotal);
     if (profesorSelect) profesorSelect.addEventListener('change', actualizarUI);
-    inputs.forEach(function(inp) { inp.addEventListener('input', actualizarPagos); });
 
+    document.getElementById('form-venta').addEventListener('submit', function() {
+        if (!divididoActivo) syncSimpleHidden();
+    });
+
+    setModoCamposOcultos(false);
     calcularTotal();
 })();
 </script>

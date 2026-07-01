@@ -134,6 +134,7 @@ urlpatterns = [
     path('rutinas/envios/nueva/', views_rutinas.envio_crear, name='envio_crear'),
     path('rutinas/envios/<int:pk>/editar/', views_rutinas.envio_editar, name='envio_editar'),
     path('rutinas/envios/<int:pk>/enviar/', views_rutinas.envio_enviar, name='envio_enviar'),
+    path('api/ejercicios-catalogo/', views_rutinas.api_ejercicios_catalogo, name='api_ejercicios_catalogo'),
 
     ## Turnos
     path('turnos/', views_turnos.turnos_index, name='turnos_index'),

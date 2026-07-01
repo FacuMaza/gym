@@ -13,6 +13,7 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import F
 import json
+import math
 from django.db.models import Count, Exists, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone as tz
@@ -1303,14 +1304,17 @@ def venta_crear(request):
                 venta.gimnasio = form.cleaned_data['producto'].gimnasio
                 venta.fecha = date.today()
                 venta.caja = caja
-                venta.save()  # Guardar venta en la base de datos
+                venta.efectivo = float(form.cleaned_data.get('efectivo') or 0)
+                venta.transferencia = float(form.cleaned_data.get('transferencia') or 0)
+                venta.tarjeta_credito = float(form.cleaned_data.get('tarjeta_credito') or 0)
+                venta.nombre_titular = (form.cleaned_data.get('nombre_titular') or '').strip() or None
+                venta.save()
                 producto = venta.producto
-                producto.cantidad -= venta.cantidad  # se modifica el stock del producto
-                producto.save()  # se guarda la modificación del stock
+                producto.cantidad -= venta.cantidad
+                producto.save()
 
-                # --- CREACIÓN DEL INGRESO solo si NO es venta a profesor (cuenta a cuenta) ---
                 if not venta.profesor:
-                    monto_ingreso = venta.cantidad * producto.precio
+                    monto_ingreso = venta.efectivo + venta.transferencia + venta.tarjeta_credito
                     ingresos.objects.create(
                         descripcion=f'Venta de {producto.descripcion}',
                         monto=monto_ingreso,
@@ -1842,6 +1846,13 @@ def detalle_caja(request, caja_id):
         tot_ing = tot_mens + tot_ventas + tot_otros
         balance = tot_ing - tot_egr
 
+    mens_ef = sum(c.efectivo or 0 for c in cuotas)
+    mens_tr = sum(c.transferencia or 0 for c in cuotas)
+    mens_tc = sum(c.tarjeta_credito or 0 for c in cuotas)
+    ven_ef = sum(v.efectivo or 0 for v in ventas)
+    ven_tr = sum(v.transferencia or 0 for v in ventas)
+    ven_tc = sum(v.tarjeta_credito or 0 for v in ventas)
+
     context = {
         'caja': caja,
         'cuotas': cuotas,
@@ -1853,6 +1864,8 @@ def detalle_caja(request, caja_id):
         'inicio': inicio, 'fin': fin,
         'tot_mens': tot_mens, 'tot_ventas': tot_ventas, 'tot_pagos_prof': tot_pagos_prof, 'tot_otros': tot_otros,
         'tot_ing': tot_ing, 'tot_egr': tot_egr, 'balance': balance,
+        'mens_ef': mens_ef, 'mens_tr': mens_tr, 'mens_tc': mens_tc,
+        'ven_ef': ven_ef, 'ven_tr': ven_tr, 'ven_tc': ven_tc,
     }
     return render(request, 'detalle_caja.html', context)
 

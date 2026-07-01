@@ -1,7 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container page-container py-4">
-    <h2 class="fw-bold mb-4">{{ titulo_pagina }}</h2>
+    <h2 class="fw-bold mb-2">{{ titulo_pagina }}</h2>
+    {% if catalogo_count == 0 %}
+    <div class="alert alert-warning mt-3">
+        <strong>Catálogo vacío.</strong> Ejecutá:
+        <code>python manage.py importar_ejercicios</code>
+    </div>
+    {% else %}
+    <p class="text-muted mb-4">{{ catalogo_count }} ejercicios con GIF · el orden se guarda automáticamente</p>
+    {% endif %}
+
     <form method="post" id="form-rutina">
         {% csrf_token %}
         <div class="card border-0 shadow-sm mb-4">
@@ -15,88 +24,197 @@
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <h3 class="h5 fw-bold mb-0">Ejercicios</h3>
-            <button type="button" class="btn btn-sm btn-success" id="btn-agregar-ejercicio">+ Agregar ejercicio</button>
+            <h3 class="h5 fw-bold mb-0">Ejercicios de la rutina</h3>
+            <button type="button" class="btn btn-success btn-sm" id="btn-agregar-ejercicio">+ Agregar ejercicio</button>
         </div>
+
         {{ formset.management_form }}
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table mb-0 align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Series</th>
-                                <th>Reps</th>
-                                <th>Peso</th>
-                                <th>Descanso</th>
-                                <th>Notas</th>
-                                <th>Orden</th>
-                                <th style="width: 3rem;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="ejercicios-tbody">
-                            {% for f in formset %}
-                            <tr class="ejercicio-row{% if f.DELETE.value %} d-none{% endif %}">
-                                {% for field in f.hidden_fields %}{{ field }}{% endfor %}
-                                <td>{{ f.nombre }}</td>
-                                <td>{{ f.series }}</td>
-                                <td>{{ f.repeticiones }}</td>
-                                <td>{{ f.peso }}</td>
-                                <td>{{ f.descanso }}</td>
-                                <td>{{ f.notas }}</td>
-                                <td>{{ f.orden }}</td>
-                                <td class="text-center">
-                                    <span class="d-none">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
-                                    <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+
+        <div id="ejercicios-lista" class="d-flex flex-column gap-3 mb-4">
+            {% for f in formset %}
+            <div class="card border shadow-sm ejercicio-card{% if f.DELETE.value %} d-none{% endif %}"
+                 {% if f.instance.ejercicio_catalogo_id %}
+                 data-inicial-id="{{ f.instance.ejercicio_catalogo_id }}"
+                 data-inicial-nombre="{{ f.instance.ejercicio_catalogo.nombre }}"
+                 data-inicial-gif="{{ f.instance.ejercicio_catalogo.gif_url }}"
+                 {% elif f.instance.nombre %}
+                 data-inicial-nombre="{{ f.instance.nombre }}"
+                 {% endif %}>
+                {% for field in f.hidden_fields %}{{ field }}{% endfor %}
+                <span class="d-none ejercicio-delete-wrap">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-start gap-2 gap-md-3">
+                        <div class="ejercicio-numero badge bg-primary rounded-pill fs-6 px-3 py-2">1</div>
+                        <div class="flex-grow-1 min-w-0 ejercicio-picker-wrap">
+                            <div class="ejercicio-picker"></div>
+                        </div>
+                        <div class="d-flex flex-column gap-1 flex-shrink-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary btn-subir" title="Subir">↑</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary btn-bajar" title="Bajar">↓</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-3 ms-0 ms-md-5 ps-md-2">
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-0">Series</label>
+                            {{ f.series }}
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-0">Reps</label>
+                            {{ f.repeticiones }}
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-0">Peso</label>
+                            {{ f.peso }}
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-0">Descanso</label>
+                            {{ f.descanso }}
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small text-muted mb-0">Notas</label>
+                            {{ f.notas }}
+                        </div>
+                    </div>
                 </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="ejercicios-vacio" class="card border-0 shadow-sm mb-4{% if formset.forms %} d-none{% endif %}">
+            <div class="card-body text-center py-5 text-muted">
+                <p class="mb-3">Todavía no agregaste ejercicios.</p>
+                <button type="button" class="btn btn-success btn-sm" id="btn-agregar-primero">+ Agregar el primero</button>
             </div>
         </div>
 
         <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Guardar</button>
+            <button type="submit" class="btn btn-primary">Guardar rutina</button>
             <a href="{% url 'rutinas_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
         </div>
     </form>
 </div>
 
-<table class="d-none">
-    <tbody>
-        <tr class="ejercicio-row" id="ejercicio-template">
-            {% with f=formset.empty_form %}
-            {% for field in f.hidden_fields %}{{ field }}{% endfor %}
-            <td>{{ f.nombre }}</td>
-            <td>{{ f.series }}</td>
-            <td>{{ f.repeticiones }}</td>
-            <td>{{ f.peso }}</td>
-            <td>{{ f.descanso }}</td>
-            <td>{{ f.notas }}</td>
-            <td>{{ f.orden }}</td>
-            <td class="text-center">
-                <span class="d-none">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
-                <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
-            </td>
-            {% endwith %}
-        </tr>
-    </tbody>
-</table>
+<div class="d-none" id="ejercicio-template">
+    <div class="card border shadow-sm ejercicio-card">
+        {% with f=formset.empty_form %}
+        {% for field in f.hidden_fields %}{{ field }}{% endfor %}
+        <span class="d-none ejercicio-delete-wrap">{% if f.DELETE %}{{ f.DELETE }}{% endif %}</span>
+        <div class="card-body p-3">
+            <div class="d-flex align-items-start gap-2 gap-md-3">
+                <div class="ejercicio-numero badge bg-primary rounded-pill fs-6 px-3 py-2">1</div>
+                <div class="flex-grow-1 min-w-0 ejercicio-picker-wrap">
+                    <div class="ejercicio-picker"></div>
+                </div>
+                <div class="d-flex flex-column gap-1 flex-shrink-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-subir" title="Subir">↑</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-bajar" title="Bajar">↓</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-ejercicio" title="Quitar">✕</button>
+                </div>
+            </div>
+            <div class="row g-2 mt-3 ms-0 ms-md-5 ps-md-2">
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-0">Series</label>
+                    {{ f.series }}
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-0">Reps</label>
+                    {{ f.repeticiones }}
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-0">Peso</label>
+                    {{ f.peso }}
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-0">Descanso</label>
+                    {{ f.descanso }}
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small text-muted mb-0">Notas</label>
+                    {{ f.notas }}
+                </div>
+            </div>
+        </div>
+        {% endwith %}
+    </div>
+</div>
+
+<style>
+.ejercicio-picker { position: relative; width: 100%; }
+.ejercicio-picker .resultados {
+    position: absolute; z-index: 1050; left: 0; right: 0; top: 100%;
+    max-height: 300px; overflow-y: auto;
+    background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+    margin-top: .25rem;
+}
+.ejercicio-picker .resultado-item {
+    cursor: pointer; padding: .6rem .75rem;
+    display: flex; align-items: center; gap: .75rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.ejercicio-picker .resultado-item:hover { background: #f0f9ff; }
+.ejercicio-picker .resultado-item img {
+    width: 56px; height: 56px; object-fit: cover; border-radius: .375rem;
+    background: #f1f5f9; flex-shrink: 0;
+}
+.ejercicio-picker .seleccionado {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .5rem .75rem; background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: .5rem;
+}
+.ejercicio-picker .seleccionado img {
+    width: 64px; height: 64px; object-fit: cover; border-radius: .375rem;
+}
+.ejercicio-card .form-control { font-size: .9rem; }
+</style>
 
 <script>
 (function () {
-    const tbody = document.getElementById('ejercicios-tbody');
+    const API_URL = '{% url "api_ejercicios_catalogo" %}';
+    const lista = document.getElementById('ejercicios-lista');
+    const vacio = document.getElementById('ejercicios-vacio');
     const totalInput = document.getElementById('id_ejercicios-TOTAL_FORMS');
-    const template = document.getElementById('ejercicio-template');
+    const templateWrap = document.getElementById('ejercicio-template');
     const prefix = 'ejercicios';
+    let debounceTimer = null;
+
+    function escapeHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = text || '';
+        return d.innerHTML;
+    }
+
+    function cardsVisibles() {
+        return lista.querySelectorAll('.ejercicio-card:not(.d-none)');
+    }
+
+    function actualizarVacio() {
+        vacio.classList.toggle('d-none', cardsVisibles().length > 0);
+    }
+
+    function getHiddenInputs(card) {
+        return {
+            catalogo: card.querySelector('input[name$="-ejercicio_catalogo"]'),
+            nombre: card.querySelector('input[name$="-nombre"]'),
+            orden: card.querySelector('input[name$="-orden"]'),
+        };
+    }
+
+    function renumberOrden() {
+        cardsVisibles().forEach(function (card, idx) {
+            const num = idx + 1;
+            const badge = card.querySelector('.ejercicio-numero');
+            if (badge) badge.textContent = num;
+            const hidden = getHiddenInputs(card);
+            if (hidden.orden) hidden.orden.value = num;
+        });
+    }
 
     function reindexFormset() {
-        const rows = tbody.querySelectorAll('tr.ejercicio-row');
-        rows.forEach(function (row, index) {
-            row.querySelectorAll('input, select, textarea').forEach(function (el) {
+        const cards = lista.querySelectorAll('.ejercicio-card');
+        cards.forEach(function (card, index) {
+            card.querySelectorAll('input, select, textarea').forEach(function (el) {
                 if (el.name) {
                     el.name = el.name.replace(new RegExp(prefix + '-\\d+-'), prefix + '-' + index + '-');
                 }
@@ -104,45 +222,201 @@
                     el.id = el.id.replace(new RegExp('id_' + prefix + '-\\d+-'), 'id_' + prefix + '-' + index + '-');
                 }
             });
+            const picker = card.querySelector('.ejercicio-picker');
+            if (picker) picker.dataset.ready = '0';
         });
-        totalInput.value = rows.length;
+        totalInput.value = cards.length;
+        cardsVisibles().forEach(initPicker);
+        renumberOrden();
+        actualizarVacio();
     }
 
-    function addRow() {
+    function renderSeleccionado(container, item) {
+        container.innerHTML =
+            '<div class="seleccionado">' +
+                '<img src="' + escapeHtml(item.gif_url) + '" alt="" loading="lazy">' +
+                '<div class="flex-grow-1 min-w-0">' +
+                    '<div class="fw-semibold">' + escapeHtml(item.nombre) + '</div>' +
+                    '<div class="small text-muted">' +
+                        escapeHtml([item.musculo, item.equipo].filter(Boolean).join(' · ')) +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary btn-cambiar-ejercicio">Cambiar</button>' +
+            '</div>';
+    }
+
+    function renderBusqueda(container) {
+        container.innerHTML =
+            '<input type="text" class="form-control ejercicio-buscar" ' +
+            'placeholder="Escribí para buscar… (pecho, glúteos, sentadilla, mancuerna)" autocomplete="off">' +
+            '<div class="resultados d-none"></div>';
+    }
+
+    function buscar(q, resultadosEl, onSelect) {
+        fetch(API_URL + (q ? '?q=' + encodeURIComponent(q) : ''))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                const items = data.results || [];
+                if (!items.length) {
+                    resultadosEl.innerHTML = '<div class="p-3 text-muted small text-center">Sin resultados</div>';
+                } else {
+                    resultadosEl.innerHTML = items.map(function (item) {
+                        return '<div class="resultado-item" data-id="' + item.id + '">' +
+                            '<img src="' + escapeHtml(item.gif_url) + '" alt="" loading="lazy">' +
+                            '<div class="min-w-0">' +
+                                '<div class="fw-semibold">' + escapeHtml(item.nombre) + '</div>' +
+                                '<div class="text-muted small">' +
+                                    escapeHtml([item.musculo, item.equipo].filter(Boolean).join(' · ')) +
+                                '</div>' +
+                            '</div></div>';
+                    }).join('');
+                    resultadosEl.querySelectorAll('.resultado-item').forEach(function (el) {
+                        el.addEventListener('click', function () {
+                            const item = items.find(function (i) { return String(i.id) === el.dataset.id; });
+                            if (item) onSelect(item);
+                            resultadosEl.classList.add('d-none');
+                        });
+                    });
+                }
+                resultadosEl.classList.remove('d-none');
+            })
+            .catch(function () {
+                resultadosEl.innerHTML = '<div class="p-3 text-danger small">Error al buscar ejercicios.</div>';
+                resultadosEl.classList.remove('d-none');
+            });
+    }
+
+    function initPicker(card, abrirAlInicio) {
+        const container = card.querySelector('.ejercicio-picker');
+        if (!container || container.dataset.ready === '1') return;
+        container.dataset.ready = '1';
+        const hidden = getHiddenInputs(card);
+
+        function aplicar(item) {
+            if (hidden.catalogo) hidden.catalogo.value = item.id;
+            if (hidden.nombre) hidden.nombre.value = item.nombre;
+            renderSeleccionado(container, item);
+        }
+
+        function abrirBusqueda() {
+            renderBusqueda(container);
+            const input = container.querySelector('.ejercicio-buscar');
+            const resultados = container.querySelector('.resultados');
+            input.focus();
+            buscar('', resultados, aplicar);
+            input.addEventListener('input', function () {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function () {
+                    buscar(input.value.trim(), resultados, aplicar);
+                }, 250);
+            });
+            input.addEventListener('focus', function () {
+                resultados.classList.remove('d-none');
+            });
+        }
+
+        container.addEventListener('click', function (e) {
+            if (e.target.closest('.btn-cambiar-ejercicio')) abrirBusqueda();
+        });
+
+        const inicialId = card.dataset.inicialId;
+        const inicialNombre = card.dataset.inicialNombre;
+        const inicialGif = card.dataset.inicialGif;
+        if (inicialId && inicialNombre) {
+            aplicar({ id: inicialId, nombre: inicialNombre, gif_url: inicialGif || '', musculo: '', equipo: '' });
+        } else if (hidden.catalogo && hidden.catalogo.value) {
+            fetch(API_URL + '?id=' + encodeURIComponent(hidden.catalogo.value))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.result) aplicar(data.result);
+                    else if (abrirAlInicio) abrirBusqueda();
+                })
+                .catch(function () { if (abrirAlInicio) abrirBusqueda(); });
+        } else if (abrirAlInicio) {
+            abrirBusqueda();
+        }
+    }
+
+    function addCard(abrirBusqueda) {
         const maxInput = document.getElementById('id_ejercicios-MAX_NUM_FORMS');
         const index = parseInt(totalInput.value, 10);
         if (maxInput && index >= parseInt(maxInput.value, 10)) {
-            alert('Máximo de 100 ejercicios por rutina.');
+            alert('Máximo 100 ejercicios por rutina.');
             return;
         }
-        const row = template.cloneNode(true);
-        row.id = '';
-        row.innerHTML = row.innerHTML.replace(/__prefix__/g, index);
-        tbody.appendChild(row);
+        const card = templateWrap.firstElementChild.cloneNode(true);
+        card.innerHTML = card.innerHTML.replace(/__prefix__/g, index);
+        card.removeAttribute('data-inicial-id');
+        card.removeAttribute('data-inicial-nombre');
+        card.removeAttribute('data-inicial-gif');
+        lista.appendChild(card);
         totalInput.value = index + 1;
+        initPicker(card, abrirBusqueda !== false);
+        renumberOrden();
+        actualizarVacio();
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    function removeRow(btn) {
-        const row = btn.closest('tr.ejercicio-row');
-        const idInput = row.querySelector('input[name$="-id"]');
-        const deleteInput = row.querySelector('input[name$="-DELETE"]');
+    function removeCard(btn) {
+        const card = btn.closest('.ejercicio-card');
+        const idInput = card.querySelector('input[name$="-id"]');
+        const deleteInput = card.querySelector('input[name$="-DELETE"]');
         if (idInput && idInput.value) {
-            if (deleteInput) {
-                deleteInput.checked = true;
-            }
-            row.classList.add('d-none');
+            if (deleteInput) deleteInput.checked = true;
+            card.classList.add('d-none');
         } else {
-            row.remove();
+            card.remove();
             reindexFormset();
+            return;
         }
+        renumberOrden();
+        actualizarVacio();
     }
 
-    document.getElementById('btn-agregar-ejercicio').addEventListener('click', addRow);
-    tbody.addEventListener('click', function (e) {
+    function moverCard(card, dir) {
+        const visibles = Array.from(cardsVisibles());
+        const idx = visibles.indexOf(card);
+        if (idx < 0) return;
+        const target = dir < 0 ? visibles[idx - 1] : visibles[idx + 1];
+        if (!target) return;
+        if (dir < 0) {
+            lista.insertBefore(card, target);
+        } else {
+            lista.insertBefore(target, card);
+        }
+        reindexFormset();
+    }
+
+    document.getElementById('btn-agregar-ejercicio').addEventListener('click', function () { addCard(true); });
+    document.getElementById('btn-agregar-primero').addEventListener('click', function () { addCard(true); });
+
+    lista.addEventListener('click', function (e) {
         if (e.target.closest('.btn-quitar-ejercicio')) {
-            removeRow(e.target.closest('.btn-quitar-ejercicio'));
+            removeCard(e.target.closest('.btn-quitar-ejercicio'));
+        } else if (e.target.closest('.btn-subir')) {
+            moverCard(e.target.closest('.ejercicio-card'), -1);
+        } else if (e.target.closest('.btn-bajar')) {
+            moverCard(e.target.closest('.ejercicio-card'), 1);
         }
     });
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.ejercicio-picker')) {
+            document.querySelectorAll('.ejercicio-picker .resultados').forEach(function (el) {
+                el.classList.add('d-none');
+            });
+        }
+    });
+
+    document.getElementById('form-rutina').addEventListener('submit', function () {
+        renumberOrden();
+    });
+
+    lista.querySelectorAll('.ejercicio-card').forEach(function (card) {
+        initPicker(card, false);
+    });
+    renumberOrden();
+    actualizarVacio();
 })();
 </script>
 {% endblock %}

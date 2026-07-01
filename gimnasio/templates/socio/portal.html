@@ -128,35 +128,107 @@
                     {% if entrega.rutina.notas %}
                     <p class="px-3 pt-3 mb-0 text-muted">{{ entrega.rutina.notas }}</p>
                     {% endif %}
-                    <div class="table-responsive">
-                        <table class="table table-sm mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Ejercicio</th>
-                                    <th>Series</th>
-                                    <th>Reps</th>
-                                    <th>Peso</th>
-                                    <th>Descanso</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for ej in entrega.rutina.ejercicios.all %}
-                                <tr>
-                                    <td>{{ ej.nombre }}</td>
-                                    <td>{{ ej.series }}</td>
-                                    <td>{{ ej.repeticiones }}</td>
-                                    <td>{{ ej.peso|default:"-" }}</td>
-                                    <td>{{ ej.descanso|default:"-" }}</td>
-                                </tr>
-                                {% empty %}
-                                <tr><td colspan="5" class="text-muted text-center py-3">Sin ejercicios cargados.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    <div class="list-group list-group-flush">
+                        {% for ej in entrega.rutina.ejercicios.all %}
+                        <button type="button"
+                                class="list-group-item list-group-item-action ejercicio-rutina-item text-start"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalEjercicio"
+                                data-nombre="{{ ej.nombre_display }}"
+                                data-series="{{ ej.series }}"
+                                data-reps="{{ ej.repeticiones }}"
+                                data-peso="{{ ej.peso|default:'' }}"
+                                data-descanso="{{ ej.descanso|default:'' }}"
+                                data-notas="{{ ej.notas|default:'' }}"
+                                data-gif="{{ ej.gif_url|default:'' }}"
+                                data-instrucciones="{{ ej.instrucciones_ejercicio|join:'||' }}">
+                            <div class="d-flex align-items-center gap-3">
+                                {% if ej.gif_url %}
+                                <img src="{{ ej.gif_url }}" alt="" class="rounded" width="56" height="56" style="object-fit:cover;background:#f1f5f9;">
+                                {% else %}
+                                <div class="rounded bg-light d-flex align-items-center justify-content-center" style="width:56px;height:56px;font-size:1.5rem;">💪</div>
+                                {% endif %}
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="fw-semibold">{{ ej.nombre_display }}</div>
+                                    <div class="small text-muted">
+                                        {{ ej.series }} series × {{ ej.repeticiones }} reps
+                                        {% if ej.peso %} · {{ ej.peso }}{% endif %}
+                                        {% if ej.descanso %} · descanso {{ ej.descanso }}{% endif %}
+                                    </div>
+                                </div>
+                                {% if ej.gif_url %}
+                                <span class="badge bg-primary">Ver cómo se hace</span>
+                                {% endif %}
+                            </div>
+                        </button>
+                        {% empty %}
+                        <div class="list-group-item text-muted text-center py-3">Sin ejercicios cargados.</div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
             {% endfor %}
+
+            <div class="modal fade" id="modalEjercicio" tabindex="-1" aria-labelledby="modalEjercicioLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title fw-bold" id="modalEjercicioLabel">Ejercicio</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="text-center mb-3" id="modal-gif-wrap"></div>
+                            <div class="row g-2 mb-3 small">
+                                <div class="col-6 col-md-3"><strong>Series:</strong> <span id="modal-series"></span></div>
+                                <div class="col-6 col-md-3"><strong>Reps:</strong> <span id="modal-reps"></span></div>
+                                <div class="col-6 col-md-3"><strong>Peso:</strong> <span id="modal-peso"></span></div>
+                                <div class="col-6 col-md-3"><strong>Descanso:</strong> <span id="modal-descanso"></span></div>
+                            </div>
+                            <div id="modal-notas-wrap" class="alert alert-light d-none mb-3"></div>
+                            <div id="modal-instrucciones-wrap" class="d-none">
+                                <h6 class="fw-semibold">Cómo hacerlo</h6>
+                                <ol class="mb-0 ps-3" id="modal-instrucciones"></ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+            document.getElementById('modalEjercicio').addEventListener('show.bs.modal', function (event) {
+                var btn = event.relatedTarget;
+                if (!btn) return;
+                document.getElementById('modalEjercicioLabel').textContent = btn.dataset.nombre || 'Ejercicio';
+                document.getElementById('modal-series').textContent = btn.dataset.series || '-';
+                document.getElementById('modal-reps').textContent = btn.dataset.reps || '-';
+                document.getElementById('modal-peso').textContent = btn.dataset.peso || '-';
+                document.getElementById('modal-descanso').textContent = btn.dataset.descanso || '-';
+                var gifWrap = document.getElementById('modal-gif-wrap');
+                var gif = btn.dataset.gif || '';
+                if (gif) {
+                    gifWrap.innerHTML = '<img src="' + gif + '" alt="" class="img-fluid rounded shadow-sm" style="max-height:320px;">';
+                } else {
+                    gifWrap.innerHTML = '<p class="text-muted mb-0">Sin demostración en video para este ejercicio.</p>';
+                }
+                var notasWrap = document.getElementById('modal-notas-wrap');
+                if (btn.dataset.notas) {
+                    notasWrap.textContent = btn.dataset.notas;
+                    notasWrap.classList.remove('d-none');
+                } else {
+                    notasWrap.classList.add('d-none');
+                }
+                var instWrap = document.getElementById('modal-instrucciones-wrap');
+                var instList = document.getElementById('modal-instrucciones');
+                var raw = btn.dataset.instrucciones || '';
+                var steps = raw ? raw.split('||').filter(Boolean) : [];
+                if (steps.length) {
+                    instList.innerHTML = steps.map(function (s) { return '<li>' + s + '</li>'; }).join('');
+                    instWrap.classList.remove('d-none');
+                } else {
+                    instList.innerHTML = '';
+                    instWrap.classList.add('d-none');
+                }
+            });
+            </script>
         {% else %}
         <p class="text-muted">Todavía no tenés rutinas publicadas.</p>
         {% endif %}

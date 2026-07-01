@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from datetime import date, datetime, timedelta
+import math
 
 class CategoriaMensualidad(models.Model):
     """Categorías de planes de mensualidad, definidas por cada gimnasio."""
@@ -230,7 +231,7 @@ class Venta(models.Model):
 
     @property
     def monto_total(self):
-        return (self.cantidad or 0) * (self.producto.precio or 0)
+        return math.ceil((self.cantidad or 0) * (self.producto.precio or 0) - 1e-9)
 
     class Meta:
         db_table = 'Ventas'
@@ -367,6 +368,30 @@ class RegistroIngreso(models.Model):
         verbose_name_plural = 'Registro Ingresos'
 
 
+class EjercicioCatalogo(models.Model):
+    """Catálogo global de ejercicios con GIF (importado desde ExerciseGymGifsDB)."""
+    clave = models.CharField(max_length=120, unique=True, help_text='Ej: biceps/barbell-curl')
+    slug = models.SlugField(max_length=120, unique=True)
+    nombre = models.CharField(max_length=200)
+    nombre_en = models.CharField(max_length=200, blank=True)
+    musculo = models.CharField(max_length=80, blank=True)
+    parte_cuerpo = models.CharField(max_length=80, blank=True)
+    equipo = models.CharField(max_length=80, blank=True)
+    categoria = models.CharField(max_length=80, blank=True)
+    instrucciones = models.JSONField(default=list, blank=True)
+    gif_url = models.URLField(max_length=500)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'EjerciciosCatalogo'
+        ordering = ['nombre']
+        verbose_name = 'Ejercicio (catálogo)'
+        verbose_name_plural = 'Ejercicios (catálogo)'
+
+    def __str__(self):
+        return self.nombre
+
+
 class Rutina(models.Model):
     gimnasio = models.ForeignKey(Gimnasio, on_delete=models.CASCADE, related_name='rutinas')
     categoria = models.ForeignKey(CategoriaMensualidad, on_delete=models.CASCADE, related_name='rutinas')
@@ -385,6 +410,13 @@ class Rutina(models.Model):
 
 class EjercicioRutina(models.Model):
     rutina = models.ForeignKey(Rutina, on_delete=models.CASCADE, related_name='ejercicios')
+    ejercicio_catalogo = models.ForeignKey(
+        EjercicioCatalogo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='usos_en_rutinas',
+    )
     nombre = models.CharField(max_length=200)
     series = models.PositiveIntegerField(default=3)
     repeticiones = models.CharField(max_length=50, default='12')
@@ -400,7 +432,32 @@ class EjercicioRutina(models.Model):
         verbose_name_plural = 'Ejercicios de rutina'
 
     def __str__(self):
+        return self.nombre_display
+
+    @property
+    def nombre_display(self):
+        if self.ejercicio_catalogo_id:
+            return self.ejercicio_catalogo.nombre
         return self.nombre
+
+    @property
+    def gif_url(self):
+        if self.ejercicio_catalogo_id:
+            return self.ejercicio_catalogo.gif_url
+        return None
+
+    @property
+    def instrucciones_ejercicio(self):
+        if self.ejercicio_catalogo_id and self.ejercicio_catalogo.instrucciones:
+            return self.ejercicio_catalogo.instrucciones
+        return []
+
+    def save(self, *args, **kwargs):
+        if self.ejercicio_catalogo_id and not self.nombre:
+            self.nombre = self.ejercicio_catalogo.nombre
+        elif self.ejercicio_catalogo_id:
+            self.nombre = self.ejercicio_catalogo.nombre
+        super().save(*args, **kwargs)
 
 
 class ProgramacionEnvio(models.Model):

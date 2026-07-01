@@ -16,14 +16,20 @@
                         {% for c in cuotas %}
                         <tr>
                             <td>Mensualidad</td>
-                            <td>{{ c.socio.apellido }}, {{ c.socio.nombre }} — {{ c.tipo_mensualidad }}</td>
+                            <td>
+                                {{ c.socio.apellido }}, {{ c.socio.nombre }} — {{ c.tipo_mensualidad }}
+                                <div class="mt-1">{% include 'partials/desglose_pago.html' with efectivo=c.efectivo transferencia=c.transferencia tarjeta_credito=c.tarjeta_credito titular=c.nombre_titular_transferencia %}</div>
+                            </td>
                             <td class="text-end text-success">$ {{ c.precio|moneda_ar }}</td>
                         </tr>
                         {% endfor %}
                         {% for v in ventas %}
                         <tr>
                             <td>Venta</td>
-                            <td>{{ v.producto.descripcion }} × {{ v.cantidad }}</td>
+                            <td>
+                                {{ v.producto.descripcion }} × {{ v.cantidad }}
+                                <div class="mt-1">{% include 'partials/desglose_pago.html' with efectivo=v.efectivo transferencia=v.transferencia tarjeta_credito=v.tarjeta_credito titular=v.nombre_titular %}</div>
+                            </td>
                             <td class="text-end text-success">$ {{ v.monto_total|moneda_ar }}</td>
                         </tr>
                         {% endfor %}

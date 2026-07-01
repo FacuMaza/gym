@@ -3,6 +3,7 @@ from django.forms import DateInput
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import date
+import math
 from .models import *
 
 
@@ -439,32 +440,53 @@ class VentaForm(forms.ModelForm):
         producto = cleaned_data.get('producto')
         cantidad = cleaned_data.get('cantidad')
         profesor = cleaned_data.get('profesor')
-        efectivo = cleaned_data.get('efectivo') or 0
-        transferencia = cleaned_data.get('transferencia') or 0
-        tarjeta_credito = cleaned_data.get('tarjeta_credito') or 0
-        total = self.data.get('total')
-        
+        efectivo = float(cleaned_data.get('efectivo') or 0)
+        transferencia = float(cleaned_data.get('transferencia') or 0)
+        tarjeta_credito = float(cleaned_data.get('tarjeta_credito') or 0)
+
         if producto and cantidad:
             if cantidad > producto.cantidad:
                 raise ValidationError(
-                     f'No hay suficiente stock para este producto. Hay {producto.cantidad} disponibles.'
+                    f'No hay suficiente stock para este producto. Hay {producto.cantidad} disponibles.'
                 )
-        
-        # Si es venta a profesor (cuenta), no validar pagos; se carga a su cuenta
+
         if profesor:
             cleaned_data['efectivo'] = 0
             cleaned_data['transferencia'] = 0
             cleaned_data['tarjeta_credito'] = 0
-        elif total is not None:
-            total = float(total)
-            suma_pagos = float(efectivo) + float(transferencia) + float(tarjeta_credito)
-            if suma_pagos != total:
-                raise ValidationError("La suma de los pagos debe ser igual al total.")
-            if (float(transferencia) > 0 or float(tarjeta_credito) > 0):
-                nombre_titular = (cleaned_data.get('nombre_titular') or '').strip()
-                if not nombre_titular:
-                    raise ValidationError("El nombre del titular es obligatorio cuando usás transferencia o tarjeta.")
-           
+            return cleaned_data
+
+        if not producto or not cantidad:
+            return cleaned_data
+
+        total_esperado = math.ceil(float(producto.precio) * cantidad - 1e-9)
+        total_post = self.data.get('total')
+        if total_post is not None:
+            try:
+                if abs(float(total_post) - total_esperado) > 0.01:
+                    raise ValidationError('El total no coincide con el producto seleccionado.')
+            except (TypeError, ValueError):
+                raise ValidationError('Total inválido.')
+
+        suma_pagos = efectivo + transferencia + tarjeta_credito
+        for etiqueta, monto in (
+            ('efectivo', efectivo),
+            ('transferencia', transferencia),
+            ('tarjeta', tarjeta_credito),
+        ):
+            if monto > total_esperado + 0.01:
+                raise ValidationError('Ningún monto puede superar el total a cobrar.')
+
+        if abs(suma_pagos - total_esperado) > 0.01:
+            raise ValidationError('La suma de los pagos debe ser igual al total.')
+
+        if transferencia > 0 or tarjeta_credito > 0:
+            nombre_titular = (cleaned_data.get('nombre_titular') or '').strip()
+            if not nombre_titular:
+                raise ValidationError(
+                    'El nombre del titular es obligatorio cuando usás transferencia o tarjeta.'
+                )
+
         return cleaned_data
 
 class ExtrasForm(forms.ModelForm):

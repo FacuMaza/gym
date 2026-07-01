@@ -62,22 +62,43 @@ def socios_de_rutina(rutina):
     ).select_related('tipo_mensualidad', 'auth_user')
 
 
+def entregas_rutina_vigentes(socio):
+    """Única entrega vigente por categoría (evita acumular rutinas viejas)."""
+    from .models import RutinaEntregada
+
+    entregas = (
+        RutinaEntregada.objects.filter(socio=socio)
+        .select_related('rutina', 'rutina__categoria')
+        .prefetch_related('rutina__ejercicios__ejercicio_catalogo')
+        .order_by('-fecha_publicacion', '-id')
+    )
+    vigentes = {}
+    for entrega in entregas:
+        cat_id = entrega.rutina.categoria_id
+        if cat_id not in vigentes:
+            vigentes[cat_id] = entrega
+    return sorted(vigentes.values(), key=lambda e: e.fecha_publicacion, reverse=True)
+
+
 def publicar_rutina(rutina, programacion=None, fecha=None):
-    """Publica la rutina en la cuenta de cada socio de la categoría (sin notificaciones)."""
+    """Publica la rutina en cada socio de la categoría, reemplazando la entrega anterior."""
     from .models import RutinaEntregada
 
     fecha = fecha or date.today()
-    creadas = 0
+    publicados = 0
     for socio in socios_de_rutina(rutina):
-        _, created = RutinaEntregada.objects.get_or_create(
+        RutinaEntregada.objects.filter(
+            socio=socio,
+            rutina__categoria=rutina.categoria,
+        ).delete()
+        RutinaEntregada.objects.create(
             socio=socio,
             rutina=rutina,
             fecha_publicacion=fecha,
-            defaults={'programacion': programacion},
+            programacion=programacion,
         )
-        if created:
-            creadas += 1
-    return creadas
+        publicados += 1
+    return publicados
 
 
 def debe_publicar_hoy(programacion, hoy=None):

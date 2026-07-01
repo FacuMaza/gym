@@ -4,8 +4,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .public_urls import build_socio_login_url, qr_usa_ip_local
-from .models import RutinaEntregada, Socio
-from .socio_portal_utils import socio_bloqueo_rutinas
+from .models import Socio
+from .socio_portal_utils import entregas_rutina_vigentes, socio_bloqueo_rutinas
 from .turnos_utils import (
     cancelar_reserva,
     categoria_usa_turnos,
@@ -55,11 +55,7 @@ def socio_portal(request):
     bloqueado, fecha_venc = socio_bloqueo_rutinas(socio)
     rutinas = []
     if not bloqueado:
-        rutinas = (
-            RutinaEntregada.objects.filter(socio=socio)
-            .select_related('rutina')
-            .prefetch_related('rutina__ejercicios')
-        )
+        rutinas = entregas_rutina_vigentes(socio)
 
     usa_turnos = categoria_usa_turnos(socio)
     puede_turnos = socio_puede_reservar_turnos(socio)
