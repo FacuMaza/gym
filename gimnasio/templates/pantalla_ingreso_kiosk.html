@@ -116,6 +116,25 @@
         const diasClases = document.getElementById('dias-clases');
         const errorMsg = document.getElementById('error-msg');
         const REFRESH_SECONDS = 8;
+        const PUERTA_HABILITADA = {{ puerta_habilitada|yesno:"true,false" }};
+        const PUERTA_AGENT_URL = '{{ puerta_agent_url|escapejs }}';
+        const PUERTA_AGENT_SECRET = '{{ puerta_agent_secret|escapejs }}';
+
+        async function intentarAbrirPuerta(data) {
+            if (!data.vigente || !PUERTA_HABILITADA || !PUERTA_AGENT_URL) return;
+            const url = PUERTA_AGENT_URL.replace(/\/$/, '') + '/unlock';
+            const headers = { 'Content-Type': 'application/json' };
+            if (PUERTA_AGENT_SECRET) headers['X-Door-Token'] = PUERTA_AGENT_SECRET;
+            for (let i = 0; i < 2; i++) {
+                try {
+                    const res = await fetch(url, { method: 'POST', headers, body: '{}' });
+                    if (res.ok) return;
+                } catch (err) {
+                    if (i === 1) console.warn('Agente de puerta:', err);
+                }
+                await new Promise(r => setTimeout(r, 400));
+            }
+        }
 
         function fechaVencimientoTexto(iso) {
             if (!iso) return '';
@@ -192,6 +211,7 @@
                 const data = await res.json();
                 if (data.ok && data.encontrado) {
                     mostrarResultado(data);
+                    intentarAbrirPuerta(data);
                     setTimeout(resetear, REFRESH_SECONDS * 1000);
                 } else {
                     mostrarError(data.mensaje || data.error || 'Socio no encontrado');

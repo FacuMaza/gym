@@ -1,0 +1,14 @@
+[Unit]
+Description=GYM-PRO agente de puerta (Arduino USB en PC de ingreso)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gym-pro/deploy/agente_puerta
+EnvironmentFile=-/opt/gym-pro/deploy/agente_puerta/door.env
+ExecStart=/opt/gym-pro/deploy/agente_puerta/venv/bin/python agent.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django import forms as django_forms
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
@@ -2213,6 +2214,29 @@ def api_mensualidades_por_categoria(request):
 
 
 # API: ingreso por DNI - busca socio, registra ingreso, devuelve datos para pantalla
+def _puerta_info_respuesta(vigente: bool) -> dict:
+    """Metadatos de puerta para la pantalla de ingreso."""
+    habilitada = bool(getattr(settings, 'DOOR_ARDUINO_ENABLED', False))
+    modo = getattr(settings, 'DOOR_CONTROL_MODE', 'both')
+    usa_servidor = habilitada and modo in ('server', 'both')
+    usa_agente = habilitada and modo in ('agent', 'both')
+    abierta = False
+    mensaje = ''
+    if vigente and usa_servidor:
+        try:
+            from .puerta_arduino import abrir_puerta
+            abierta, mensaje = abrir_puerta()
+        except Exception as exc:
+            mensaje = str(exc)
+    return {
+        'habilitada': habilitada,
+        'usa_agente': usa_agente,
+        'usa_servidor': usa_servidor,
+        'abierta': abierta,
+        'mensaje': mensaje,
+    }
+
+
 @csrf_exempt
 def api_ingreso_por_dni(request):
     if request.method == 'POST':
@@ -2272,6 +2296,7 @@ def api_ingreso_por_dni(request):
                 socio.refresh_from_db()
             from .turnos_utils import info_turno_kiosk
             turno_kiosk = info_turno_kiosk(socio, hoy)
+            puerta = _puerta_info_respuesta(vigente)
             return JsonResponse({
                 'ok': True,
                 'encontrado': True,
@@ -2292,6 +2317,7 @@ def api_ingreso_por_dni(request):
                 'usa_turnos': turno_kiosk.get('usa_turnos', False),
                 'turnos_hoy': turno_kiosk.get('turnos_hoy', []),
                 'tiene_turno_hoy': turno_kiosk.get('tiene_turno_hoy', False),
+                'puerta': puerta,
             })
         except json.JSONDecodeError:
             return JsonResponse({'error': 'JSON inválido', 'ok': False}, status=400)
@@ -2307,4 +2333,14 @@ def pantalla_ingreso(request):
 def pantalla_ingreso_kiosk(request):
     """Vista fullscreen para kiosco: ingreso por DNI con cartel de bienvenida. Sin login para uso en pantalla dedicada."""
     gym_id = request.GET.get('gym')
-    return render(request, 'pantalla_ingreso_kiosk.html', {'gimnasio_id': gym_id or ''})
+    modo = getattr(settings, 'DOOR_CONTROL_MODE', 'both')
+    puerta_habilitada = bool(
+        getattr(settings, 'DOOR_ARDUINO_ENABLED', False)
+        and modo in ('agent', 'both')
+    )
+    return render(request, 'pantalla_ingreso_kiosk.html', {
+        'gimnasio_id': gym_id or '',
+        'puerta_habilitada': puerta_habilitada,
+        'puerta_agent_url': getattr(settings, 'DOOR_AGENT_URL', '') if puerta_habilitada else '',
+        'puerta_agent_secret': getattr(settings, 'DOOR_AGENT_SECRET', '') if puerta_habilitada else '',
+    })

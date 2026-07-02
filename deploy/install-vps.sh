@@ -32,10 +32,26 @@ fi
 
 echo "==> Archivo .env"
 if [[ ! -f .env ]]; then
-  cp .env.example .env
   SECRET=$(./venv/bin/python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())")
-  sed -i "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET}/" .env
-  echo "Creado .env con SECRET_KEY nuevo. Revisá: nano .env"
+  DOOR_SECRET=$(./venv/bin/python -c "import secrets; print(secrets.token_hex(16))")
+  cat > .env <<EOF
+SECRET_KEY=${SECRET}
+DEBUG=0
+ALLOWED_HOSTS=127.0.0.1
+ALLOWED_HOSTS_PARENT=sistemgympro.com
+CSRF_TRUSTED_SUBDOMAIN_SUFFIX=sistemgympro.com
+PUBLIC_BASE_URL=https://facugym.sistemgympro.com
+DB_ENGINE=django.db.backends.sqlite3
+DB_NAME=/var/www/gym/box.sqlite3
+DOOR_ARDUINO_ENABLED=1
+DOOR_CONTROL_MODE=agent
+DOOR_AGENT_URL=http://127.0.0.1:8765
+DOOR_AGENT_SECRET=${DOOR_SECRET}
+DOOR_ARDUINO_PORT=
+DOOR_ARDUINO_PULSE_MS=3000
+EOF
+  echo "Creado .env con SECRET_KEY y DOOR_AGENT_SECRET nuevos."
+  echo "Copiá DOOR_AGENT_SECRET al door.env de la PC del kiosco."
 else
   echo ".env ya existe, no se sobrescribe"
 fi

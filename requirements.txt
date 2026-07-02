@@ -10,6 +10,7 @@ whitenoise==6.8.2
 
 # --- App ---
 python-dotenv==1.0.1
+pyserial==3.5
 twilio==9.3.7
 
 # --- PostgreSQL (descomentar o instalar si DB_ENGINE=postgresql en .env) ---
