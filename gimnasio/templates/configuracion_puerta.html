@@ -46,7 +46,7 @@
 </div>
 
 {% if form.instance.activa %}
-<script src="{% static 'gimnasio/puerta_serial.js' %}"></script>
+{% include 'partials/puerta_serial_js.html' %}
 <script>
 (function () {
     const pulsoMs = {{ form.instance.pulso_ms|default:3000 }};

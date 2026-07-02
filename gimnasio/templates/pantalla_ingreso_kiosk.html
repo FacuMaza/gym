@@ -110,7 +110,7 @@
         <div id="error-msg" class="alert alert-danger mt-3" style="display:none;"></div>
     </div>
 
-    <script src="{% static 'gimnasio/puerta_serial.js' %}"></script>
+    {% include 'partials/puerta_serial_js.html' %}
     <script>
         const form = document.getElementById('form-dni');
         const inputDni = document.getElementById('input-dni');
@@ -133,7 +133,7 @@
             if (!PUERTA_HABILITADA || !puertaBanner) return;
             puertaBanner.classList.remove('d-none');
             if (typeof GymPuertaSerial === 'undefined') {
-                puertaTexto.textContent = 'No se cargó el módulo de puerta. Recargá con Chrome o Edge.';
+                puertaTexto.textContent = 'Error interno al cargar la puerta. Recargá la página (Ctrl+F5).';
                 btnConectar.classList.add('d-none');
                 return;
             }
