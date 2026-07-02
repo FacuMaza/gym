@@ -1,6 +1,6 @@
 from django.urls import path
 from gimnasio import views
-from gimnasio import views_rutinas, views_socio, views_turnos
+from gimnasio import views_rutinas, views_socio, views_turnos, views_puerta
 
 urlpatterns = [
     path('', views.index, name="index"),
@@ -111,9 +111,14 @@ urlpatterns = [
     path('api/mensualidades/', views.api_mensualidades_por_categoria, name='api_mensualidades_por_categoria'),
     path('api/ingreso-dni/', views.api_ingreso_por_dni, name='api_ingreso_por_dni'),
 
-    ## Pantalla de ingreso (kiosco)
+    ## Pantalla de ingreso
     path('pantalla-ingreso/', views.pantalla_ingreso, name='pantalla_ingreso'),
     path('pantalla-ingreso/kiosk/', views.pantalla_ingreso_kiosk, name='pantalla_ingreso_kiosk'),
+
+    ## Puerta Arduino
+    path('configuracion-puerta/', views_puerta.configuracion_puerta, name='configuracion_puerta'),
+    path('configuracion-puerta/descargar-json/', views_puerta.descargar_agente_puerta_json, name='descargar_agente_puerta_json'),
+    path('api/puerta/agente-config/', views_puerta.api_puerta_agente_config, name='api_puerta_agente_config'),
 
     ## Portal socios
     path('socio/login/', views_socio.socio_login, name='socio_login'),

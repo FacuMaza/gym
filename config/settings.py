@@ -198,17 +198,5 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@example.com")
 
-# --- Puerta electromagnética (Arduino en PC del kiosco) ---
-# VPS: DOOR_ARDUINO_ENABLED=1 + DOOR_CONTROL_MODE=agent (la pantalla llama al agente local).
-# PC kiosco: deploy/agente_puerta/agent.py con el mismo DOOR_AGENT_SECRET.
-DOOR_ARDUINO_ENABLED = os.environ.get('DOOR_ARDUINO_ENABLED', '1') == '1'
-DOOR_ARDUINO_PORT = os.environ.get('DOOR_ARDUINO_PORT', '').strip()
-DOOR_ARDUINO_BAUD = int(os.environ.get('DOOR_ARDUINO_BAUD', '9600'))
-DOOR_ARDUINO_PULSE_MS = int(os.environ.get('DOOR_ARDUINO_PULSE_MS', '3000'))
-DOOR_ARDUINO_OPEN_DELAY = float(os.environ.get('DOOR_ARDUINO_OPEN_DELAY', '2.0'))
-DOOR_AGENT_URL = os.environ.get('DOOR_AGENT_URL', 'http://127.0.0.1:8765').strip().rstrip('/')
-DOOR_AGENT_PORT = int(os.environ.get('DOOR_AGENT_PORT', '8765'))
-DOOR_AGENT_SECRET = os.environ.get('DOOR_AGENT_SECRET', '').strip()
-# server = solo Django abre serial | agent = solo PC kiosco | both = los dos (recomendado)
-DOOR_CONTROL_MODE = os.environ.get('DOOR_CONTROL_MODE', 'agent').strip().lower()
+# Configuración de puerta: panel web → menú «Puerta» (sin variables en .env).
 

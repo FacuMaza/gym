@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-Agente de puerta para la PC del kiosco (USB + Arduino).
-No requiere Django — solo Python 3 + pyserial.
-
-Uso:
-  pip install pyserial python-dotenv
-  cp door.env.example door.env   # editar si hace falta
-  python agent.py
+Agente de puerta — PC de la pantalla de ingreso (USB + Arduino).
+Lee door.local.json (descargado desde el panel web). Sin .env.
 """
 from __future__ import annotations
 
 import json
 import logging
-import os
 import signal
 import sys
+import threading
+import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,50 +20,98 @@ ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
-
-from gimnasio.puerta_serial_core import ControlPuertaSerial, PuertaConfig
+from gimnasio.puerta_serial_core import ControlPuertaSerial, PuertaConfig, detectar_puerto_arduino
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger('agente_puerta')
 
-ENV_FILE = ROOT / 'door.env'
-if load_dotenv and ENV_FILE.exists():
-    load_dotenv(ENV_FILE)
+LOCAL_FILE = ROOT / 'door.local.json'
+AGENT_HOST = '127.0.0.1'
+AGENT_PORT = 8765
+
+_vinculo: dict = {}
+_runtime: dict = {
+    'token_unlock': '',
+    'config_remota': {},
+}
+_control: ControlPuertaSerial | None = None
+_control_lock = threading.Lock()
 
 
-def _env_int(key: str, default: int) -> int:
-    try:
-        return int(os.environ.get(key, default))
-    except (TypeError, ValueError):
-        return default
+def _cargar_vinculo() -> dict:
+    if not LOCAL_FILE.exists():
+        print(
+            f'Falta {LOCAL_FILE.name}. Descargalo desde el panel: Configuración → Puerta.',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    with LOCAL_FILE.open(encoding='utf-8') as f:
+        data = json.load(f)
+    for key in ('servidor', 'gimnasio_id', 'token'):
+        if not data.get(key):
+            print(f'{LOCAL_FILE.name} incompleto (servidor, gimnasio_id, token).', file=sys.stderr)
+            sys.exit(1)
+    return data
 
 
-def _env_float(key: str, default: float) -> float:
-    try:
-        return float(os.environ.get(key, default))
-    except (TypeError, ValueError):
-        return default
+def _fetch_remoto():
+    servidor = _vinculo['servidor'].rstrip('/')
+    url = (
+        f"{servidor}/api/puerta/agente-config/"
+        f"?gimnasio_id={_vinculo['gimnasio_id']}"
+    )
+    req = urllib.request.Request(url, headers={'X-Gym-Door-Token': _vinculo['token']})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode('utf-8'))
 
 
-CONFIG = PuertaConfig(
-    port=(os.environ.get('DOOR_ARDUINO_PORT') or '').strip(),
-    baud=_env_int('DOOR_ARDUINO_BAUD', 9600),
-    pulse_ms=_env_int('DOOR_ARDUINO_PULSE_MS', 3000),
-    open_delay=_env_float('DOOR_ARDUINO_OPEN_DELAY', 2.0),
-)
-AGENT_HOST = os.environ.get('DOOR_AGENT_HOST', '127.0.0.1').strip()
-AGENT_PORT = _env_int('DOOR_AGENT_PORT', 8765)
-AGENT_SECRET = (os.environ.get('DOOR_AGENT_SECRET') or '').strip()
+def _aplicar_config_remota(payload: dict):
+    global _control
+    cfg = payload.get('config') or {}
+    if not cfg.get('activa'):
+        logger.warning('Puerta desactivada en el panel web.')
+    puerta = PuertaConfig(
+        port=(cfg.get('puerto_arduino') or '').strip(),
+        baud=9600,
+        pulse_ms=int(cfg.get('pulso_ms') or 3000),
+        open_delay=float(cfg.get('espera_serial') or 2.0),
+    )
+    _runtime['token_unlock'] = cfg.get('token_agente') or _vinculo['token']
+    _runtime['config_remota'] = cfg
+    with _control_lock:
+        if _control:
+            _control.cerrar()
+        _control = ControlPuertaSerial(puerta)
 
-CONTROL = ControlPuertaSerial(CONFIG)
+
+def _sync_loop():
+    while True:
+        try:
+            data = _fetch_remoto()
+            if data.get('ok'):
+                _aplicar_config_remota(data)
+                logger.info('Config actualizada desde el servidor (%s)', data.get('gimnasio', ''))
+        except Exception as exc:
+            logger.warning('No se pudo sincronizar config: %s', exc)
+        time.sleep(60)
+
+
+def _control_activo() -> ControlPuertaSerial:
+    global _control
+    with _control_lock:
+        if _control is None:
+            _aplicar_config_remota({'config': {
+                'activa': True,
+                'puerto_arduino': '',
+                'pulso_ms': 3000,
+                'espera_serial': 2.0,
+                'token_agente': _vinculo['token'],
+            }})
+        return _control
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'GYM-PRO-DoorAgent/1.1'
+    server_version = 'GYM-PRO-DoorAgent/1.2'
 
     def log_message(self, fmt, *args):
         logger.info('%s - %s', self.address_string(), fmt % args)
@@ -90,13 +136,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _token_ok(self) -> bool:
-        if not AGENT_SECRET:
+        token = _runtime.get('token_unlock') or ''
+        if not token:
             return True
-        return self.headers.get('X-Door-Token', '').strip() == AGENT_SECRET
+        return self.headers.get('X-Door-Token', '').strip() == token
 
     def do_GET(self):
-        if self.path.rstrip('/') == '/health':
-            self._json(200, {'ok': True, 'estado': CONTROL.estado()})
+        path = self.path.rstrip('/')
+        if path == '/health':
+            ctrl = _control_activo()
+            estado = ctrl.estado()
+            estado['puertos_usb'] = []
+            try:
+                puerto = detectar_puerto_arduino()
+                if puerto:
+                    estado['puertos_usb'] = [puerto]
+            except Exception:
+                pass
+            self._json(200, {'ok': True, 'estado': estado, 'activa_remota': _runtime['config_remota'].get('activa')})
             return
         self._json(404, {'ok': False, 'error': 'No encontrado'})
 
@@ -104,37 +161,50 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip('/') != '/unlock':
             self._json(404, {'ok': False, 'error': 'No encontrado'})
             return
+        if not _runtime['config_remota'].get('activa', True):
+            self._json(403, {'ok': False, 'error': 'Puerta desactivada en el panel'})
+            return
         if not self._token_ok():
             self._json(403, {'ok': False, 'error': 'Token inválido'})
             return
-        ok, mensaje = CONTROL.abrir()
+        ok, mensaje = _control_activo().abrir()
         self._json(200 if ok else 503, {'ok': ok, 'mensaje': mensaje})
 
 
 def main():
-    if AGENT_HOST not in ('127.0.0.1', 'localhost', '::1'):
-        print('Solo se permite escuchar en localhost.', file=sys.stderr)
-        sys.exit(1)
+    global _vinculo
+    _vinculo = _cargar_vinculo()
+    try:
+        data = _fetch_remoto()
+        if not data.get('ok'):
+            raise RuntimeError(data.get('error', 'respuesta inválida'))
+        _aplicar_config_remota(data)
+    except Exception as exc:
+        print(f'Advertencia: no se pudo leer config del servidor ({exc}). Usando valores locales.', file=sys.stderr)
+
+    threading.Thread(target=_sync_loop, daemon=True).start()
 
     httpd = ThreadingHTTPServer((AGENT_HOST, AGENT_PORT), Handler)
 
     def stop(*_args):
         logger.info('Deteniendo agente…')
-        CONTROL.cerrar()
+        with _control_lock:
+            if _control:
+                _control.cerrar()
         httpd.shutdown()
 
     signal.signal(signal.SIGINT, stop)
     if hasattr(signal, 'SIGTERM'):
         signal.signal(signal.SIGTERM, stop)
 
-    estado = CONTROL.estado()
+    estado = _control_activo().estado()
     print(f'Agente en http://{AGENT_HOST}:{AGENT_PORT}')
+    print(f'Vinculado a gym #{_vinculo["gimnasio_id"]} — {_vinculo["servidor"]}')
     print(f'Arduino: {estado.get("puerto_detectado") or "no detectado"} — {estado.get("mensaje")}')
-    print('GET /health   POST /unlock')
     try:
         httpd.serve_forever()
     finally:
-        CONTROL.cerrar()
+        stop()
 
 
 if __name__ == '__main__':

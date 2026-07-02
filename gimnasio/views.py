@@ -2214,26 +2214,16 @@ def api_mensualidades_por_categoria(request):
 
 
 # API: ingreso por DNI - busca socio, registra ingreso, devuelve datos para pantalla
-def _puerta_info_respuesta(vigente: bool) -> dict:
-    """Metadatos de puerta para la pantalla de ingreso."""
-    habilitada = bool(getattr(settings, 'DOOR_ARDUINO_ENABLED', False))
-    modo = getattr(settings, 'DOOR_CONTROL_MODE', 'both')
-    usa_servidor = habilitada and modo in ('server', 'both')
-    usa_agente = habilitada and modo in ('agent', 'both')
-    abierta = False
-    mensaje = ''
-    if vigente and usa_servidor:
-        try:
-            from .puerta_arduino import abrir_puerta
-            abierta, mensaje = abrir_puerta()
-        except Exception as exc:
-            mensaje = str(exc)
+def _puerta_info_respuesta(gimnasio, vigente: bool) -> dict:
+    from .puerta_utils import datos_puerta_pantalla
+
+    datos = datos_puerta_pantalla(gimnasio)
     return {
-        'habilitada': habilitada,
-        'usa_agente': usa_agente,
-        'usa_servidor': usa_servidor,
-        'abierta': abierta,
-        'mensaje': mensaje,
+        'habilitada': datos['habilitada'],
+        'usa_agente': datos['usa_agente'],
+        'usa_servidor': False,
+        'abierta': False,
+        'mensaje': '',
     }
 
 
@@ -2296,7 +2286,7 @@ def api_ingreso_por_dni(request):
                 socio.refresh_from_db()
             from .turnos_utils import info_turno_kiosk
             turno_kiosk = info_turno_kiosk(socio, hoy)
-            puerta = _puerta_info_respuesta(vigente)
+            puerta = _puerta_info_respuesta(socio.gimnasio, vigente)
             return JsonResponse({
                 'ok': True,
                 'encontrado': True,
@@ -2331,16 +2321,21 @@ def pantalla_ingreso(request):
 
 
 def pantalla_ingreso_kiosk(request):
-    """Vista fullscreen para kiosco: ingreso por DNI con cartel de bienvenida. Sin login para uso en pantalla dedicada."""
+    """Pantalla fullscreen de ingreso por DNI. Sin login."""
+    from .models import Gimnasio
+    from .puerta_utils import datos_puerta_pantalla
+
     gym_id = request.GET.get('gym')
-    modo = getattr(settings, 'DOOR_CONTROL_MODE', 'both')
-    puerta_habilitada = bool(
-        getattr(settings, 'DOOR_ARDUINO_ENABLED', False)
-        and modo in ('agent', 'both')
-    )
+    gimnasio = None
+    if gym_id:
+        try:
+            gimnasio = Gimnasio.objects.get(pk=int(gym_id))
+        except (ValueError, Gimnasio.DoesNotExist):
+            gimnasio = None
+    puerta = datos_puerta_pantalla(gimnasio)
     return render(request, 'pantalla_ingreso_kiosk.html', {
         'gimnasio_id': gym_id or '',
-        'puerta_habilitada': puerta_habilitada,
-        'puerta_agent_url': getattr(settings, 'DOOR_AGENT_URL', '') if puerta_habilitada else '',
-        'puerta_agent_secret': getattr(settings, 'DOOR_AGENT_SECRET', '') if puerta_habilitada else '',
+        'puerta_habilitada': puerta['habilitada'],
+        'puerta_agent_url': puerta['agent_url'],
+        'puerta_agent_secret': puerta['agent_secret'],
     })

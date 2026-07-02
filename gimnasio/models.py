@@ -61,6 +61,57 @@ class Gimnasio(models.Model):
         verbose_name_plural = 'Gimnasios'
 
 
+class ConfiguracionPuerta(models.Model):
+    """Configuración de puerta Arduino por gimnasio (panel web, sin .env)."""
+    gimnasio = models.OneToOneField(
+        Gimnasio,
+        on_delete=models.CASCADE,
+        related_name='config_puerta',
+    )
+    activa = models.BooleanField(
+        default=False,
+        help_text='Habilita apertura automática al ingreso en verde.',
+    )
+    url_agente = models.CharField(
+        max_length=200,
+        default='http://127.0.0.1:8765',
+        help_text='URL del agente en la PC de la pantalla de ingreso (misma máquina que el Arduino USB).',
+    )
+    token_agente = models.CharField(max_length=64, blank=True, editable=False)
+    puerto_arduino = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text='Ej: COM5 o /dev/ttyUSB0. Vacío = detección automática del Nano CH340.',
+    )
+    pulso_ms = models.PositiveIntegerField(
+        default=3000,
+        help_text='Milisegundos que el relé permanece activo al abrir.',
+    )
+    espera_serial = models.FloatField(
+        default=2.0,
+        help_text='Segundos de espera al conectar el puerto USB (reinicio del Arduino).',
+    )
+
+    class Meta:
+        db_table = 'ConfiguracionPuerta'
+        verbose_name = 'Configuración de puerta'
+        verbose_name_plural = 'Configuraciones de puerta'
+
+    def __str__(self):
+        return f'Puerta — {self.gimnasio}'
+
+    def save(self, *args, **kwargs):
+        if not self.token_agente:
+            import secrets
+            self.token_agente = secrets.token_hex(16)
+        super().save(*args, **kwargs)
+
+    def regenerar_token(self):
+        import secrets
+        self.token_agente = secrets.token_hex(16)
+        self.save(update_fields=['token_agente'])
+
+
 class UsuarioGimnasio(models.Model):
     """Relación many-to-many: una cuenta puede tener muchos gimnasios."""
     usuario = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name='gimnasios_asignados')

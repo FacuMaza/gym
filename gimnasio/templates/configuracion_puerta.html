@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}Puerta automática{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 720px;">
+    <h1 class="h3 mb-1">Puerta automática (Arduino)</h1>
+    <p class="text-muted mb-4">
+        Configurá la apertura al ingreso en verde. Todo desde acá — no hace falta editar archivos del servidor.
+    </p>
+
+    <form method="post" class="card shadow-sm mb-4">
+        <div class="card-body">
+            {% csrf_token %}
+            <div class="form-check form-switch mb-4">
+                {{ form.activa }}
+                <label class="form-check-label fw-semibold" for="{{ form.activa.id_for_label }}">{{ form.activa.label }}</label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">{{ form.url_agente.label }}</label>
+                {{ form.url_agente }}
+                <div class="form-text">Dejá <code>http://127.0.0.1:8765</code> si la pantalla de ingreso y el Arduino están en la misma PC.</div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">{{ form.puerto_arduino.label }}</label>
+                {{ form.puerto_arduino }}
+                <div class="form-text">{{ form.puerto_arduino.help_text }}</div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">{{ form.pulso_ms.label }}</label>
+                    {{ form.pulso_ms }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">{{ form.espera_serial.label }}</label>
+                    {{ form.espera_serial }}
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Guardar configuración</button>
+        </div>
+    </form>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-semibold">PC de la pantalla de ingreso</div>
+        <div class="card-body">
+            <ol class="mb-3">
+                <li>Conectá el Arduino a la PC donde abrís la pantalla de ingreso.</li>
+                <li>Descargá el archivo de vinculación y guardalo como <code>door.local.json</code> en la carpeta <code>deploy/agente_puerta</code>.</li>
+                <li>Ejecutá <code>deploy/windows/iniciar-agente-puerta.bat</code> (o <code>python agent.py</code> en esa carpeta).</li>
+                <li>Dejá el agente corriendo y abrí la pantalla de ingreso en esa misma PC.</li>
+            </ol>
+            <a href="{% url 'descargar_agente_puerta_json' %}" class="btn btn-outline-primary me-2">Descargar door.local.json</a>
+            <button type="button" class="btn btn-outline-secondary" id="btn-probar-agente">Probar conexión</button>
+            <button type="button" class="btn btn-outline-success" id="btn-abrir-prueba">Abrir puerta (prueba)</button>
+            <div id="resultado-prueba" class="mt-3 small"></div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Detección automática del USB</div>
+        <div class="card-body text-muted small">
+            <p class="mb-2">Si dejás el puerto vacío, el agente busca un Arduino Nano (chip CH340) entre los USB conectados.</p>
+            <p class="mb-0">Si hay varios dispositivos USB y elige mal, indicá el puerto manualmente arriba (ej. <code>COM5</code> en Windows).</p>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const url = '{{ form.url_agente.value|default:"http://127.0.0.1:8765"|escapejs }}'.replace(/\/$/, '');
+    const token = '{{ config.token_agente|escapejs }}';
+    const out = document.getElementById('resultado-prueba');
+
+    function headers() {
+        const h = { 'Content-Type': 'application/json' };
+        if (token) h['X-Door-Token'] = token;
+        return h;
+    }
+
+    function msg(text, ok) {
+        out.innerHTML = '<div class="alert alert-' + (ok ? 'success' : 'warning') + ' mb-0">' + text + '</div>';
+    }
+
+    document.getElementById('btn-probar-agente').addEventListener('click', async function () {
+        out.textContent = 'Probando…';
+        try {
+            const res = await fetch(url + '/health');
+            const data = await res.json();
+            if (data.ok) {
+                const e = data.estado || {};
+                msg('Agente OK. Puerto detectado: ' + (e.puerto_detectado || '—') + '. ' + (e.mensaje || ''), true);
+            } else {
+                msg('El agente respondió pero con error.', false);
+            }
+        } catch (err) {
+            msg('No se pudo conectar al agente en ' + url + '. ¿Está corriendo en esta PC?', false);
+        }
+    });
+
+    document.getElementById('btn-abrir-prueba').addEventListener('click', async function () {
+        out.textContent = 'Abriendo…';
+        try {
+            const res = await fetch(url + '/unlock', { method: 'POST', headers: headers(), body: '{}' });
+            const data = await res.json();
+            msg(data.mensaje || (data.ok ? 'Puerta activada' : 'Error'), !!data.ok);
+        } catch (err) {
+            msg('No se pudo abrir. Verificá que el agente esté corriendo.', false);
+        }
+    });
+})();
+</script>
+{% endblock %}
