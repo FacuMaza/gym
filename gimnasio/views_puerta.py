@@ -33,13 +33,10 @@ def configuracion_puerta(request):
     else:
         form = ConfiguracionPuertaForm(instance=config)
 
-    agente_json = agente_json_local(request, gym, config)
     return render(request, 'configuracion_puerta.html', {
         'form': form,
         'gimnasio': gym,
         'config': config,
-        'agente_json': agente_json,
-        'agente_json_text': json.dumps(agente_json, indent=2, ensure_ascii=False),
         'gimnasio_actual': gym,
     })
 

@@ -28,15 +28,11 @@ def datos_puerta_pantalla(gimnasio: Gimnasio | None) -> dict:
     if not config or not config.activa:
         return {
             'habilitada': False,
-            'usa_agente': False,
-            'agent_url': '',
-            'agent_secret': '',
+            'pulso_ms': 3000,
         }
     return {
         'habilitada': True,
-        'usa_agente': True,
-        'agent_url': (config.url_agente or '').strip().rstrip('/'),
-        'agent_secret': config.token_agente,
+        'pulso_ms': config.pulso_ms,
     }
 
 

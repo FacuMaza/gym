@@ -4,35 +4,33 @@ from .models import ConfiguracionPuerta
 
 
 class ConfiguracionPuertaForm(forms.ModelForm):
+    pulso_segundos = forms.IntegerField(
+        min_value=1,
+        max_value=30,
+        initial=3,
+        label='Tiempo que la puerta queda libre (segundos)',
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 30}),
+    )
+
     class Meta:
         model = ConfiguracionPuerta
-        fields = ['activa', 'url_agente', 'puerto_arduino', 'pulso_ms', 'espera_serial']
+        fields = ['activa']
         widgets = {
             'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'url_agente': forms.URLInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'http://127.0.0.1:8765',
-            }),
-            'puerto_arduino': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Vacío = automático (COM5, /dev/ttyUSB0…)',
-            }),
-            'pulso_ms': forms.NumberInput(attrs={'class': 'form-control', 'min': 500, 'max': 30000}),
-            'espera_serial': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 10, 'step': 0.5}),
         }
         labels = {
-            'activa': 'Puerta automática activa',
-            'url_agente': 'Dirección del agente en esta PC',
-            'puerto_arduino': 'Puerto USB del Arduino (opcional)',
-            'pulso_ms': 'Duración de apertura (milisegundos)',
-            'espera_serial': 'Espera al conectar USB (segundos)',
-        }
-        help_texts = {
-            'puerto_arduino': 'Dejalo vacío si solo tenés el Arduino conectado. Si hay varios USB, poné COM5 (Windows) o /dev/ttyUSB0 (Linux).',
+            'activa': 'Abrir la puerta automáticamente cuando el ingreso sale en verde',
         }
 
-    def clean_pulso_ms(self):
-        valor = self.cleaned_data['pulso_ms']
-        if valor < 500 or valor > 30000:
-            raise forms.ValidationError('Entre 500 y 30000 ms.')
-        return valor
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.pulso_ms:
+            self.fields['pulso_segundos'].initial = max(1, round(self.instance.pulso_ms / 1000))
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        seg = self.cleaned_data.get('pulso_segundos') or 3
+        instance.pulso_ms = seg * 1000
+        if commit:
+            instance.save()
+        return instance

@@ -2220,7 +2220,8 @@ def _puerta_info_respuesta(gimnasio, vigente: bool) -> dict:
     datos = datos_puerta_pantalla(gimnasio)
     return {
         'habilitada': datos['habilitada'],
-        'usa_agente': datos['usa_agente'],
+        'usa_agente': False,
+        'usa_web_serial': datos['habilitada'],
         'usa_servidor': False,
         'abierta': False,
         'mensaje': '',
@@ -2336,6 +2337,5 @@ def pantalla_ingreso_kiosk(request):
     return render(request, 'pantalla_ingreso_kiosk.html', {
         'gimnasio_id': gym_id or '',
         'puerta_habilitada': puerta['habilitada'],
-        'puerta_agent_url': puerta['agent_url'],
-        'puerta_agent_secret': puerta['agent_secret'],
+        'puerta_pulso_ms': puerta['pulso_ms'],
     })

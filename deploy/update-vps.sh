@@ -7,4 +7,4 @@ cd /var/www/gym
 ./venv/bin/python manage.py collectstatic --noinput
 systemctl restart gym.service
 
-echo "Listo. Puerta: panel web → Puerta → descargar door.local.json en la PC de ingreso."
+echo "Listo. Puerta: panel web → Puerta (Chrome/Edge en la PC del ingreso)."

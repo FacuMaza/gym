@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -19,11 +20,7 @@
             padding: 2rem;
             margin: 0;
         }
-        .kiosk-container {
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-        }
+        .kiosk-container { width: 100%; max-width: 600px; text-align: center; }
         .titulo-bienvenida {
             font-size: clamp(1.5rem, 6vw, 2.5rem);
             font-weight: 700;
@@ -42,10 +39,7 @@
             max-width: 400px;
         }
         .input-dni::placeholder { color: rgba(255,255,255,0.5); }
-        .input-dni:focus {
-            outline: none;
-            box-shadow: 0 0 0 4px rgba(56,189,248,0.4);
-        }
+        .input-dni:focus { outline: none; box-shadow: 0 0 0 4px rgba(56,189,248,0.4); }
         .resultado {
             margin-top: 2rem;
             padding: 2rem;
@@ -63,36 +57,41 @@
         .dias-clases { font-size: 1.5rem; margin-top: 1rem; font-weight: 600; line-height: 1.5; }
         .dias-clases .mes-vencido { color: #fca5a5; font-size: 1.65rem; font-weight: 700; display: block; margin-bottom: 0.5rem; }
         .dias-clases .clases-info { color: #e2e8f0; font-size: 1.25rem; }
-        .turno-info {
-            display: block;
-            margin-top: 1rem;
-            font-size: 1.35rem;
-            font-weight: 700;
-            color: #38bdf8;
-        }
+        .turno-info { display: block; margin-top: 1rem; font-size: 1.35rem; font-weight: 700; color: #38bdf8; }
         .turno-info.sin-turno { color: #fcd34d; font-size: 1.15rem; }
+        .puerta-banner {
+            margin-bottom: 1.25rem;
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            background: rgba(251, 191, 36, 0.15);
+            border: 1px solid rgba(251, 191, 36, 0.5);
+            text-align: left;
+        }
+        .puerta-banner.ok {
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.45);
+        }
+        .puerta-banner.d-none { display: none !important; }
         @media (max-width: 576px) {
             body { padding: 1rem; }
             .titulo-bienvenida { font-size: 1.75rem; }
-            .input-dni { font-size: 1.5rem; padding: 0.75rem 1rem; max-width: 100%; }
+            .input-dni { font-size: 1.5rem; max-width: 100%; }
             .nombre-socio { font-size: 1.5rem; }
-            .mensualidad-info { font-size: 1rem; }
-            .dias-clases { font-size: 1.25rem; }
-            .resultado { padding: 1.5rem; margin-top: 1rem; }
-        }
-        @media (max-width: 380px) {
-            .titulo-bienvenida { font-size: 1.5rem; }
-            .input-dni { font-size: 1.25rem; }
         }
     </style>
 </head>
 <body>
     <div class="kiosk-container">
+        <div id="puerta-banner" class="puerta-banner d-none">
+            <p class="mb-2 small" id="puerta-texto">Conectá el Arduino una sola vez para habilitar la puerta automática.</p>
+            <button type="button" class="btn btn-warning btn-sm fw-semibold" id="btn-conectar-arduino">Conectar Arduino</button>
+        </div>
+
         <h1 class="titulo-bienvenida">Bienvenido al Gimnasio</h1>
         <p class="mb-4 text-white-50">Ingresá tu DNI para registrar tu entrada</p>
-        
+
         <form id="form-dni" class="mb-4">
-            <input type="text" id="input-dni" class="input-dni" placeholder="Ingresar DNI" 
+            <input type="text" id="input-dni" class="input-dni" placeholder="Ingresar DNI"
                    inputmode="numeric" pattern="[0-9]*" maxlength="15" autocomplete="off" autofocus>
             <div class="mt-3">
                 <button type="submit" class="btn btn-primary btn-lg">Ingresar</button>
@@ -107,6 +106,7 @@
         <div id="error-msg" class="alert alert-danger mt-3" style="display:none;"></div>
     </div>
 
+    <script src="{% static 'gimnasio/puerta_serial.js' %}"></script>
     <script>
         const form = document.getElementById('form-dni');
         const inputDni = document.getElementById('input-dni');
@@ -115,24 +115,65 @@
         const mensualidadInfo = document.getElementById('mensualidad-info');
         const diasClases = document.getElementById('dias-clases');
         const errorMsg = document.getElementById('error-msg');
+        const puertaBanner = document.getElementById('puerta-banner');
+        const puertaTexto = document.getElementById('puerta-texto');
+        const btnConectar = document.getElementById('btn-conectar-arduino');
         const REFRESH_SECONDS = 8;
         const PUERTA_HABILITADA = {{ puerta_habilitada|yesno:"true,false" }};
-        const PUERTA_AGENT_URL = '{{ puerta_agent_url|escapejs }}';
-        const PUERTA_AGENT_SECRET = '{{ puerta_agent_secret|escapejs }}';
+        const PUERTA_PULSO_MS = {{ puerta_pulso_ms|default:3000 }};
 
-        async function intentarAbrirPuerta(data) {
-            if (!data.vigente || !PUERTA_HABILITADA || !PUERTA_AGENT_URL) return;
-            const url = PUERTA_AGENT_URL.replace(/\/$/, '') + '/unlock';
-            const headers = { 'Content-Type': 'application/json' };
-            if (PUERTA_AGENT_SECRET) headers['X-Door-Token'] = PUERTA_AGENT_SECRET;
-            for (let i = 0; i < 2; i++) {
-                try {
-                    const res = await fetch(url, { method: 'POST', headers, body: '{}' });
-                    if (res.ok) return;
-                } catch (err) {
-                    if (i === 1) console.warn('Agente de puerta:', err);
-                }
-                await new Promise(r => setTimeout(r, 400));
+        let puertaSerial = null;
+        let puertaLista = false;
+
+        function actualizarBannerPuerta() {
+            if (!PUERTA_HABILITADA) {
+                puertaBanner.classList.add('d-none');
+                return;
+            }
+            puertaBanner.classList.remove('d-none');
+            if (!GymPuertaSerial.soportado()) {
+                puertaBanner.classList.remove('ok');
+                puertaTexto.textContent = 'Para la puerta automática usá Google Chrome o Microsoft Edge en esta PC.';
+                btnConectar.classList.add('d-none');
+                return;
+            }
+            btnConectar.classList.remove('d-none');
+            if (puertaLista) {
+                puertaBanner.classList.add('ok');
+                puertaTexto.textContent = 'Puerta conectada. Los ingresos en verde abren la entrada automáticamente.';
+                btnConectar.classList.add('d-none');
+            } else {
+                puertaBanner.classList.remove('ok');
+                puertaTexto.textContent = 'Primera vez: conectá el Arduino por USB y tocá el botón.';
+                btnConectar.classList.remove('d-none');
+            }
+        }
+
+        async function iniciarPuerta() {
+            if (!PUERTA_HABILITADA || !GymPuertaSerial.soportado()) return;
+            puertaSerial = GymPuertaSerial.crear(PUERTA_PULSO_MS);
+            puertaLista = await puertaSerial.reconectarAutomatico();
+            actualizarBannerPuerta();
+        }
+
+        btnConectar.addEventListener('click', async function () {
+            try {
+                await puertaSerial.conectar();
+                puertaLista = true;
+                actualizarBannerPuerta();
+            } catch (e) {
+                alert(e.message || 'No se pudo conectar. Elegí el Arduino en la ventana.');
+            }
+        });
+
+        async function abrirPuertaSiVerde(data) {
+            if (!data.vigente || !PUERTA_HABILITADA || !puertaSerial || !puertaLista) return;
+            try {
+                await puertaSerial.abrirPuerta();
+            } catch (e) {
+                console.warn('Puerta:', e);
+                puertaLista = false;
+                actualizarBannerPuerta();
             }
         }
 
@@ -146,8 +187,8 @@
             errorMsg.style.display = 'none';
             resultado.classList.remove('visible', 'vigente', 'no-vigente');
             resultado.classList.add('visible', data.vigente ? 'vigente' : 'no-vigente');
-            nombreSocio.textContent = `¡Bienvenido/a, ${data.nombre} ${data.apellido}!`;
-            mensualidadInfo.textContent = `${data.tipo_mensualidad}${data.categoria ? ' - ' + data.categoria : ''}`;
+            nombreSocio.textContent = '¡Bienvenido/a, ' + data.nombre + ' ' + data.apellido + '!';
+            mensualidadInfo.textContent = data.tipo_mensualidad + (data.categoria ? ' - ' + data.categoria : '');
 
             const mesVencido = data.pendiente_pago || data.mes_vencido || data.dias_restantes === 0;
             let html = '';
@@ -157,23 +198,22 @@
             } else if (mesVencido) {
                 let texto = 'MES VENCIDO';
                 const fechaStr = fechaVencimientoTexto(data.fecha_vencimiento);
-                if (fechaStr) texto += ` — venció el ${fechaStr}`;
-                html += `<span class="mes-vencido">${texto}</span>`;
-            } else if (data.usa_contador_clases && data.clases_restantes !== null && data.clases_restantes !== undefined) {
-                html += `<span class="clases-info">Clases restantes: ${data.clases_restantes}</span>`;
-            } else if (data.dias_restantes !== null && data.dias_restantes !== undefined) {
-                html += `<span>Días restantes: ${data.dias_restantes}</span>`;
+                if (fechaStr) texto += ' — venció el ' + fechaStr;
+                html += '<span class="mes-vencido">' + texto + '</span>';
+            } else if (data.usa_contador_clases && data.clases_restantes != null) {
+                html += '<span class="clases-info">Clases restantes: ' + data.clases_restantes + '</span>';
+            } else if (data.dias_restantes != null) {
+                html += '<span>Días restantes: ' + data.dias_restantes + '</span>';
             } else if (!html) {
                 html = data.mensaje_vigencia || '';
             }
 
             if (data.usa_turnos) {
                 if (data.tiene_turno_hoy && data.turnos_hoy && data.turnos_hoy.length) {
-                    const turnosTxt = data.turnos_hoy.map(t => {
-                        const fin = t.hora_fin ? `–${t.hora_fin}` : '';
-                        return `${t.hora}${fin}`;
+                    const turnosTxt = data.turnos_hoy.map(function (t) {
+                        return t.hora + (t.hora_fin ? '–' + t.hora_fin : '');
                     }).join(' · ');
-                    html += `<span class="turno-info">TURNO HOY: ${turnosTxt}</span>`;
+                    html += '<span class="turno-info">TURNO HOY: ' + turnosTxt + '</span>';
                 } else {
                     html += '<span class="turno-info sin-turno">SIN TURNO RESERVADO HOY</span>';
                 }
@@ -195,7 +235,7 @@
             inputDni.focus();
         }
 
-        form.addEventListener('submit', async (e) => {
+        form.addEventListener('submit', async function (e) {
             e.preventDefault();
             const dni = inputDni.value.trim();
             if (!dni) return;
@@ -211,7 +251,7 @@
                 const data = await res.json();
                 if (data.ok && data.encontrado) {
                     mostrarResultado(data);
-                    intentarAbrirPuerta(data);
+                    await abrirPuertaSiVerde(data);
                     setTimeout(resetear, REFRESH_SECONDS * 1000);
                 } else {
                     mostrarError(data.mensaje || data.error || 'Socio no encontrado');
@@ -223,8 +263,11 @@
             }
         });
 
+        iniciarPuerta();
         inputDni.focus();
-        setInterval(() => { if (!resultado.classList.contains('visible')) inputDni.focus(); }, 500);
+        setInterval(function () {
+            if (!resultado.classList.contains('visible')) inputDni.focus();
+        }, 500);
     </script>
 </body>
 </html>
