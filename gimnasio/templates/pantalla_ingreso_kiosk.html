@@ -61,11 +61,11 @@
         .turno-info.sin-turno { color: #fcd34d; font-size: 1.15rem; }
         .puerta-banner {
             margin-bottom: 1.25rem;
-            padding: 1rem 1.25rem;
+            padding: 1.25rem 1.5rem;
             border-radius: 12px;
-            background: rgba(251, 191, 36, 0.15);
-            border: 1px solid rgba(251, 191, 36, 0.5);
-            text-align: left;
+            background: rgba(251, 191, 36, 0.2);
+            border: 2px solid rgba(251, 191, 36, 0.7);
+            text-align: center;
         }
         .puerta-banner.ok {
             background: rgba(34, 197, 94, 0.12);
@@ -82,10 +82,14 @@
 </head>
 <body>
     <div class="kiosk-container">
-        <div id="puerta-banner" class="puerta-banner d-none">
-            <p class="mb-2 small" id="puerta-texto">Conectá el Arduino una sola vez para habilitar la puerta automática.</p>
-            <button type="button" class="btn btn-warning btn-sm fw-semibold" id="btn-conectar-arduino">Conectar Arduino</button>
+        {% if puerta_habilitada %}
+        <div id="puerta-banner" class="puerta-banner">
+            <p class="mb-2" id="puerta-texto">Conectá el Arduino por USB y tocá el botón (solo la primera vez).</p>
+            <button type="button" class="btn btn-warning fw-semibold px-4" id="btn-conectar-arduino">Conectar Arduino</button>
         </div>
+        {% else %}
+        <div id="puerta-banner" class="puerta-banner d-none" aria-hidden="true"></div>
+        {% endif %}
 
         <h1 class="titulo-bienvenida">Bienvenido al Gimnasio</h1>
         <p class="mb-4 text-white-50">Ingresá tu DNI para registrar tu entrada</p>
@@ -126,14 +130,16 @@
         let puertaLista = false;
 
         function actualizarBannerPuerta() {
-            if (!PUERTA_HABILITADA) {
-                puertaBanner.classList.add('d-none');
+            if (!PUERTA_HABILITADA || !puertaBanner) return;
+            puertaBanner.classList.remove('d-none');
+            if (typeof GymPuertaSerial === 'undefined') {
+                puertaTexto.textContent = 'No se cargó el módulo de puerta. Recargá con Chrome o Edge.';
+                btnConectar.classList.add('d-none');
                 return;
             }
-            puertaBanner.classList.remove('d-none');
             if (!GymPuertaSerial.soportado()) {
                 puertaBanner.classList.remove('ok');
-                puertaTexto.textContent = 'Para la puerta automática usá Google Chrome o Microsoft Edge en esta PC.';
+                puertaTexto.textContent = 'Para conectar el Arduino usá Google Chrome o Microsoft Edge (no Brave ni Firefox).';
                 btnConectar.classList.add('d-none');
                 return;
             }
@@ -144,19 +150,27 @@
                 btnConectar.classList.add('d-none');
             } else {
                 puertaBanner.classList.remove('ok');
-                puertaTexto.textContent = 'Primera vez: conectá el Arduino por USB y tocá el botón.';
+                puertaTexto.textContent = 'Conectá el Arduino por USB y tocá el botón (solo la primera vez).';
                 btnConectar.classList.remove('d-none');
             }
         }
 
         async function iniciarPuerta() {
-            if (!PUERTA_HABILITADA || !GymPuertaSerial.soportado()) return;
+            actualizarBannerPuerta();
+            if (!PUERTA_HABILITADA || typeof GymPuertaSerial === 'undefined' || !GymPuertaSerial.soportado()) {
+                return;
+            }
             puertaSerial = GymPuertaSerial.crear(PUERTA_PULSO_MS);
             puertaLista = await puertaSerial.reconectarAutomatico();
             actualizarBannerPuerta();
         }
 
-        btnConectar.addEventListener('click', async function () {
+        if (btnConectar) btnConectar.addEventListener('click', async function () {
+            if (typeof GymPuertaSerial === 'undefined' || !GymPuertaSerial.soportado()) {
+                alert('Usá Google Chrome o Microsoft Edge en esta PC.');
+                return;
+            }
+            if (!puertaSerial) puertaSerial = GymPuertaSerial.crear(PUERTA_PULSO_MS);
             try {
                 await puertaSerial.conectar();
                 puertaLista = true;

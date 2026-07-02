@@ -142,10 +142,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 
-STATICFILES_DIRS = [
-                        os.path.join(BASE_DIR, 'gimnasio/static'),
-   
-]
+# Estáticos en gimnasio/static/ (AppDirectoriesFinder). No duplicar esa carpeta acá.
+STATICFILES_DIRS = []
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
